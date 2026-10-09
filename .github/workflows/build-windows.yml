@@ -80,10 +80,18 @@ jobs:
           ant -q
 
       - name: Build Autopsy
-        run: ant -q build
+        run: ant -q build-zip
 
       - name: Run Core unit tests
         run: ant -f Core/build.xml test-unit
 
       - name: Run KeywordSearch unit tests
         run: ant -f KeywordSearch/build.xml test-unit
+
+      - name: Upload Windows Autopsy ZIP
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: autopsy-custom-tsk-windows
+          path: dist/*.zip
+          if-no-files-found: error
