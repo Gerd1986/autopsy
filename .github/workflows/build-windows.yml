@@ -52,35 +52,36 @@ jobs:
           choco install nuget.commandline -y
           choco install ant --ignore-dependencies -y
 
-      - name: Clone SleuthKit
+      - name: Download custom Sleuth Kit Java release
+        shell: pwsh
         run: |
-          git clone --branch develop-4.1x https://github.com/Gerd1986/sleuthkit "${{ github.workspace }}\sleuthkit"
+          $url = "https://github.com/Gerd1986/sleuthkit/releases/download/v4.15.0-qnxprobe.8/sleuthkit-java.zip"
+          Invoke-WebRequest -Uri $url -OutFile "$env:RUNNER_TEMP\\sleuthkit-java.zip"
+          New-Item -ItemType Directory -Force "$env:GITHUB_WORKSPACE\\custom-tsk" | Out-Null
+          Expand-Archive -LiteralPath "$env:RUNNER_TEMP\\sleuthkit-java.zip" -DestinationPath "$env:GITHUB_WORKSPACE\\custom-tsk" -Force
+          $jars = @(Get-ChildItem "$env:GITHUB_WORKSPACE\\custom-tsk" -Recurse -File -Filter 'sleuthkit-*.jar')
+          if ($jars.Count -ne 1) { throw "Expected exactly one Sleuth Kit JAR, found $($jars.Count)" }
+          $jar = $jars[0].FullName
+          $entries = & jar tf $jar
+          if ($LASTEXITCODE -ne 0) { throw "Unable to inspect JAR" }
+          if (-not ($entries -contains 'NATIVELIBS/amd64/win/libtsk_jni.dll')) { throw "JAR is missing 64-bit Windows JNI DLL" }
+          Write-Host "Verified custom Sleuth Kit JAR: $jar"
+          "CUSTOM_TSK_JAR=$jar" >> $env:GITHUB_ENV
 
-      - name: Cache NuGet packages
-        uses: actions/cache@v4
-        with:
-          path: ${{ github.workspace }}\sleuthkit\win32\packages
-          key: nuget-${{ hashFiles('sleuthkit/win32/libtsk/packages.config') }}
-          restore-keys: nuget-
-
-      - name: Build SleuthKit native libraries
-        working-directory: ${{ github.workspace }}\sleuthkit
+      - name: Install custom Sleuth Kit JAR for Autopsy build
+        shell: pwsh
         run: |
-          python win32\updateAndBuildAll.py -m
-
-      - name: Build SleuthKit Java bindings
-        working-directory: ${{ github.workspace }}\sleuthkit\bindings\java
-        run: |
-          ant -version
-          ant dist
-
-      - name: Build case-uco Java
-        working-directory: ${{ github.workspace }}\sleuthkit\case-uco\java
-        run: |
-          ant -q
+          $jarName = Split-Path $env:CUSTOM_TSK_JAR -Leaf
+          $targets = @(Get-ChildItem "$env:GITHUB_WORKSPACE" -Recurse -File -Filter 'sleuthkit-*.jar' |
+            Where-Object { $_.FullName -notlike '*\\custom-tsk\\*' -and $_.FullName -notlike '*\\.git\\*' })
+          if ($targets.Count -eq 0) { throw "No existing Autopsy Sleuth Kit JAR found to replace" }
+          foreach ($target in $targets) {
+            Write-Host "Replacing $($target.FullName) with $jarName"
+            Copy-Item -LiteralPath $env:CUSTOM_TSK_JAR -Destination $target.FullName -Force
+          }
 
       - name: Build Autopsy
-        run: ant -q build-zip
+        run: ant -q -Dbuild.type=RELEASE build-zip
 
       - name: Run Core unit tests
         run: ant -f Core/build.xml test-unit
@@ -88,6 +89,19 @@ jobs:
       - name: Run KeywordSearch unit tests
         run: ant -f KeywordSearch/build.xml test-unit
 
+
+      - name: Verify packaged custom JNI and create ZIP
+        shell: pwsh
+        run: |
+          $jar = @(Get-ChildItem dist -Recurse -File -Filter "sleuthkit-*.jar" | Where-Object { $_.FullName -match "autopsy.*modules.*ext" })
+          if ($jar.Count -eq 0) { throw "Packaged Autopsy does not contain a Sleuth Kit JAR" }
+          foreach ($f in $jar) {
+            $entries = & jar tf $f.FullName
+            if (-not ($entries -contains "NATIVELIBS/amd64/win/libtsk_jni.dll")) { throw "Packaged JAR missing custom JNI DLL" }
+          }
+          $dirs = @(Get-ChildItem dist -Directory -Filter "autopsy-*")
+          if ($dirs.Count -eq 0) { throw "No build-zip output directory found" }
+          Compress-Archive -Path "$($dirs[0].FullName)\\*" -DestinationPath "dist/autopsy-qnxprobe.8-windows.zip" -Force
 
       - name: Upload Windows Autopsy ZIP
         if: success()
