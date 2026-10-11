@@ -91,8 +91,29 @@ jobs:
               walker = Qnx6Walker(fh, 0, 0x2000)
               print("QNXProbe root inode:", walker.inode(1))
               print("QNXProbe root directory:", walker.listdir(1))
-              for name, ino in walker.listdir(1):
-                  print("QNXProbe entry:", repr(name), ino, walker.entry(ino))
+              seen = set()
+              pending = [("", 1)]
+              files = 0
+              while pending:
+                  parent, ino = pending.pop()
+                  if ino in seen:
+                      continue
+                  seen.add(ino)
+                  entries = walker.listdir(ino)
+                  print("QNXProbe directory:", repr(parent or "/"), ino, entries)
+                  for name, child in entries:
+                      path = (parent + "/" + name) if parent else ("/" + name)
+                      meta = walker.entry(child)
+                      print("QNXProbe entry:", repr(path), child, meta)
+                      if meta is None:
+                          continue
+                      if (meta[0] & 0o170000) == 0o040000:
+                          pending.append((path, child))
+                      elif (meta[0] & 0o170000) == 0o100000:
+                          files += 1
+              print("QNXProbe regular file count:", files)
+              if files == 0:
+                  raise RuntimeError("QNXProbe found no regular files recursively; check fixture before blaming TSK")
           '@ | Set-Content -Path "$env:RUNNER_TEMP/qnx6_reference.py" -Encoding utf8
           python "$env:RUNNER_TEMP/qnx6_reference.py" "$env:RUNNER_TEMP/qnxprobe-reference" "$env:RUNNER_TEMP/qnxmount/tests/qnx6/test_data/test_image.bin"
           if ($LASTEXITCODE -ne 0) { throw 'QNXProbe reference traversal failed' }
