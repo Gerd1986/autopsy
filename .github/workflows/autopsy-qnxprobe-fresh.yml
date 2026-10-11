@@ -71,6 +71,21 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Automatic QNX6 fls enumeration failed' }
           & $fsstat[0].FullName -f qnx6 $fixture
           if ($LASTEXITCODE -ne 0) { throw 'Explicit QNX6 fsstat failed' }
+      - name: Diagnose QNX6 root inode and directory traversal
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $image = Join-Path $env:RUNNER_TEMP 'qnxmount/tests/qnx6/test_data/test_image.bin'
+          $env:PATH = ((Get-ChildItem "$env:TSK_HOME/win32" -Recurse -File -Filter '*.dll' | ForEach-Object DirectoryName | Sort-Object -Unique) -join ';') + ';' + $env:PATH
+          foreach ($tool in @('fsstat', 'istat', 'fls')) {
+            $exe = @(Get-ChildItem "$env:TSK_HOME/win32" -Recurse -File -Filter "$tool.exe" | Select-Object -First 1)
+            if ($exe.Count -eq 0) { throw "Missing $tool.exe" }
+            Write-Host "=== $tool ==="
+            if ($tool -eq 'istat') { & $exe[0].FullName -f qnx6 $image 1 }
+            elseif ($tool -eq 'fls') { & $exe[0].FullName -f qnx6 -l -r -p $image }
+            else { & $exe[0].FullName -f qnx6 $image }
+            Write-Host "$tool exit code: $LASTEXITCODE"
+          }
       - name: Verify QNX6 file bytes against NFI archive
         shell: pwsh
         run: |
