@@ -15,8 +15,10 @@ def main():
     p = argparse.ArgumentParser()
     for arg in ("image", "archive", "fls", "icat"):
         p.add_argument(arg)
+    p.add_argument("--offset-sectors", type=int, default=0)
     a = p.parse_args()
-    listing = run(a.fls, "-f", "qnx6", "-r", "-p", a.image).decode("utf-8", "replace")
+    offset_args = ("-o", str(a.offset_sectors)) if a.offset_sectors else ()
+    listing = run(a.fls, "-f", "qnx6", "-r", "-p", *offset_args, a.image).decode("utf-8", "replace")
     print('fls output (first 12000 chars):', listing[:12000], flush=True)
     files = {}
     for line in listing.splitlines():
@@ -38,7 +40,7 @@ def main():
             if inode is None:
                 raise RuntimeError(f"Missing QNX6 file: {name}")
             expected = archive.extractfile(member).read()
-            actual = run(a.icat, "-f", "qnx6", a.image, inode)
+            actual = run(a.icat, "-f", "qnx6", *offset_args, a.image, inode)
             if actual != expected:
                 raise RuntimeError(
                     f"Content mismatch: {name}; expected sha256="
