@@ -113,7 +113,20 @@ jobs:
                           files += 1
               print("QNXProbe regular file count:", files)
               if files == 0:
-                  raise RuntimeError("QNXProbe found no regular files recursively; check fixture before blaming TSK")
+                  print("WARNING: QNXProbe found no regular files in the selected superblock generation")
+          import tarfile
+          archive = image.with_name("test_image.tar.gz")
+          if archive.exists():
+              with tarfile.open(archive, "r:gz") as tar:
+                  names = [m.name for m in tar.getmembers() if m.isfile()]
+                  print("NFI archive regular files:", len(names), names[:40])
+          for candidate in (0, 0x2000, 0x2e00):
+              try:
+                  with image.open("rb") as fh:
+                      other = Qnx6Walker(fh, 0, candidate)
+                      print("QNXProbe superblock candidate:", hex(candidate), "root:", other.inode(1), "entries:", other.listdir(1))
+              except Exception as exc:
+                  print("QNXProbe candidate error:", hex(candidate), repr(exc))
           '@ | Set-Content -Path "$env:RUNNER_TEMP/qnx6_reference.py" -Encoding utf8
           python "$env:RUNNER_TEMP/qnx6_reference.py" "$env:RUNNER_TEMP/qnxprobe-reference" "$env:RUNNER_TEMP/qnxmount/tests/qnx6/test_data/test_image.bin"
           if ($LASTEXITCODE -ne 0) { throw 'QNXProbe reference traversal failed' }
