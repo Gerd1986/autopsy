@@ -71,6 +71,20 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Automatic QNX6 fls enumeration failed' }
           & $fsstat[0].FullName -f qnx6 $fixture
           if ($LASTEXITCODE -ne 0) { throw 'Explicit QNX6 fsstat failed' }
+      - name: Verify QNX6 file bytes against NFI archive
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $data = Join-Path $env:RUNNER_TEMP 'qnxmount/tests/qnx6/test_data'
+          $image = Join-Path $data 'test_image.bin'
+          $archive = Join-Path $data 'test_image.tar.gz'
+          $fls = @(Get-ChildItem "$env:TSK_HOME/win32" -Recurse -File -Filter fls.exe | Select-Object -First 1)
+          $icat = @(Get-ChildItem "$env:TSK_HOME/win32" -Recurse -File -Filter icat.exe | Select-Object -First 1)
+          if ($fls.Count -ne 1 -or $icat.Count -ne 1) { throw 'Missing fls.exe or icat.exe' }
+          if (-not (Test-Path $archive)) { throw 'NFI reference tarball missing' }
+          $env:PATH = ((Get-ChildItem "$env:TSK_HOME/win32" -Recurse -File -Filter '*.dll' | ForEach-Object DirectoryName | Sort-Object -Unique) -join ';') + ';' + $env:PATH
+          python tests/qnx6/verify_nfi_bytes.py $image $archive $fls[0].FullName $icat[0].FullName
+          if ($LASTEXITCODE -ne 0) { throw 'QNX6 byte comparison failed' }
       - name: Build custom Java JAR
         shell: pwsh
         working-directory: ${{ env.TSK_HOME }}\\bindings\\java
