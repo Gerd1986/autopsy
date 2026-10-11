@@ -71,6 +71,22 @@ jobs:
         run: |
           ant
           if ($LASTEXITCODE -ne 0) { throw 'case-uco build failed' }
+      - name: Restore JNA Java dependencies
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $version = '5.18.1'
+          foreach ($module in @('CoreLibs','Core')) {
+            $dir = Join-Path $module 'release/modules/ext'
+            New-Item -ItemType Directory -Force -Path $dir | Out-Null
+            foreach ($artifact in @('jna','jna-platform')) {
+              $dest = Join-Path $dir "$artifact-$version.jar"
+              $url = "https://repo.maven.apache.org/maven2/net/java/dev/jna/$artifact/$version/$artifact-$version.jar"
+              Invoke-WebRequest -Uri $url -OutFile $dest
+              if ((Get-Item $dest).Length -lt 10000) { throw "Invalid dependency: $dest" }
+              Write-Host "Restored $dest"
+            }
+          }
       - name: Build Autopsy ZIP
         shell: pwsh
         run: |
