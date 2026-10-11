@@ -22,11 +22,18 @@ jobs:
         uses: actions/checkout@v4
       - name: Setup MSBuild
         uses: microsoft/setup-msbuild@v2
-      - name: Setup Java 21
+      - name: Setup Java 17
         uses: actions/setup-java@v4
         with:
           distribution: zulu
-          java-version: '21'
+          java-version: '17'
+      - name: Verify Java 17 build environment
+        shell: pwsh
+        run: |
+          java -version
+          javac -version
+          if ($LASTEXITCODE -ne 0) { throw 'Java compiler unavailable' }
+          if (-not ((& javac -version 2>&1) -match 'javac 17\\.')) { throw 'Expected JDK 17 for Autopsy build' }
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
