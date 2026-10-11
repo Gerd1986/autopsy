@@ -113,6 +113,31 @@ jobs:
           if ($LASTEXITCODE -ne 0 -or -not ($entries -contains 'NATIVELIBS/amd64/win/libtsk_jni.dll')) { throw 'Packaged JAR missing Windows JNI' }
           Compress-Archive -Path $dirs[0].FullName -DestinationPath dist/autopsy-qnxprobe-windows.zip -Force
           if (-not (Test-Path dist/autopsy-qnxprobe-windows.zip)) { throw 'Distribution ZIP missing' }
+      - name: Smoke-test packaged Sleuth Kit JNI
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $dirs = @(Get-ChildItem dist -Directory -Filter 'autopsy-*')
+          if ($dirs.Count -ne 1) { throw 'Distribution missing for JNI smoke test' }
+          $ext = Join-Path $dirs[0].FullName 'autopsy/modules/ext'
+          $jar = Join-Path $ext 'sleuthkit-4.15.0.jar'
+          if (-not (Test-Path $jar)) { throw 'Packaged Sleuth Kit JAR missing' }
+          $src = Join-Path $env:RUNNER_TEMP 'QnxprobeJniSmoke.java'
+          @'
+          import org.sleuthkit.datamodel.SleuthkitJNI;
+          public class QnxprobeJniSmoke {
+              public static void main(String[] args) {
+                  String version = SleuthkitJNI.getVersion();
+                  if (version == null || version.isBlank()) {
+                      throw new IllegalStateException("Empty native Sleuth Kit version");
+                  }
+                  System.out.println("Loaded native Sleuth Kit JNI version: " + version);
+              }
+          }
+          '@ | Set-Content -Path $src -Encoding utf8
+          $cp = "$ext/*"
+          & java --class-path $cp $src
+          if ($LASTEXITCODE -ne 0) { throw 'Packaged Sleuth Kit JNI runtime smoke test failed' }
       - name: Upload Autopsy test distribution
         uses: actions/upload-artifact@v4
         with:
