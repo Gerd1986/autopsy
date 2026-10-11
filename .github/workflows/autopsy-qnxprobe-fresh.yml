@@ -76,6 +76,26 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Automatic QNX6 fls enumeration failed' }
           & $fsstat[0].FullName -f qnx6 $fixture
           if ($LASTEXITCODE -ne 0) { throw 'Explicit QNX6 fsstat failed' }
+      - name: Compare QNXProbe reference traversal
+        shell: pwsh
+        run: |
+          git clone --depth 1 --branch main https://github.com/Gerd1986/qnxprobe.git "$env:RUNNER_TEMP/qnxprobe-reference"
+          if ($LASTEXITCODE -ne 0) { throw 'QNXProbe checkout failed' }
+          @'
+          import sys
+          from pathlib import Path
+          sys.path.insert(0, str(Path(sys.argv[1])))
+          from qnxprobe import Qnx6Walker
+          image = Path(sys.argv[2])
+          with image.open("rb") as fh:
+              walker = Qnx6Walker(fh, 0, 0x2000)
+              print("QNXProbe root inode:", walker.inode(1))
+              print("QNXProbe root directory:", walker.listdir(1))
+              for name, ino in walker.listdir(1):
+                  print("QNXProbe entry:", repr(name), ino, walker.entry(ino))
+          '@ | Set-Content -Path "$env:RUNNER_TEMP/qnx6_reference.py" -Encoding utf8
+          python "$env:RUNNER_TEMP/qnx6_reference.py" "$env:RUNNER_TEMP/qnxprobe-reference" "$env:RUNNER_TEMP/qnxmount/tests/qnx6/test_data/test_image.bin"
+          if ($LASTEXITCODE -ne 0) { throw 'QNXProbe reference traversal failed' }
       - name: Diagnose QNX6 root inode and directory traversal
         shell: pwsh
         run: |
