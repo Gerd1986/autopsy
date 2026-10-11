@@ -52,6 +52,11 @@ jobs:
           python win32/updateAndBuildAll.py -m
           if ($LASTEXITCODE -ne 0) { throw 'Native Sleuth Kit build failed' }
           if (-not (Test-Path win32/x64/Release/libtsk_jni.dll)) { throw 'Missing Windows JNI DLL' }
+      - name: Record QNX6 source revision
+        shell: pwsh
+        run: |
+          git -C "$env:TSK_HOME" log -1 --format="%H %s"
+          if ($LASTEXITCODE -ne 0) { throw 'Unable to identify Sleuth Kit source revision' }
       - name: Test QNX6 NFI fixture
         shell: pwsh
         run: |
