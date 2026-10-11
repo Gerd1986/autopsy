@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   windows:
@@ -119,3 +119,14 @@ jobs:
           name: autopsy-qnxprobe-windows-test
           path: dist/autopsy-qnxprobe-windows.zip
           if-no-files-found: error
+      - name: Publish QNXProbe Windows release
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $tag = "autopsy-qnxprobe-win-${{ github.run_number }}"
+          $zip = 'dist/autopsy-qnxprobe-windows.zip'
+          if (-not (Test-Path $zip)) { throw "Missing release ZIP: $zip" }
+          $hash = (Get-FileHash $zip -Algorithm SHA256).Hash
+          $notes = "Unsigned Windows test build of Autopsy with custom QNXProbe Sleuth Kit 4.15.0 JNI JAR.`n`nCommit: ${{ github.sha }}`nSHA256: $hash`n`nCase-UCO JAR is preserved."
+          gh release create $tag $zip --repo "${{ github.repository }}" --target "${{ github.sha }}" --title "Autopsy QNXProbe Windows $tag" --notes $notes --prerelease
+          if ($LASTEXITCODE -ne 0) { throw 'GitHub release publishing failed' }
