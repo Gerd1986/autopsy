@@ -64,10 +64,11 @@ jobs:
           $fls = @(Get-ChildItem "$env:TSK_HOME/win32" -Recurse -File -Filter fls.exe)
           if ($fsstat.Count -eq 0 -or $fls.Count -eq 0) { throw 'Native Sleuth Kit test utilities missing' }
           $env:PATH = ((Get-ChildItem "$env:TSK_HOME/win32" -Recurse -File -Filter '*.dll' | ForEach-Object DirectoryName | Sort-Object -Unique) -join ';') + ';' + $env:PATH
-          & $fsstat[0].FullName $fixture
-          if ($LASTEXITCODE -ne 0) { throw 'QNX6 fsstat failed' }
-          & $fls[0].FullName -r -p $fixture
-          if ($LASTEXITCODE -ne 0) { throw 'QNX6 fls failed' }
+          Write-Host 'QNX6 is explicitly selected because this Sleuth Kit branch marks its reader as explicit-selection-only.'
+          & $fsstat[0].FullName -f qnx6 $fixture
+          if ($LASTEXITCODE -ne 0) { throw 'Explicit QNX6 fsstat failed' }
+          & $fls[0].FullName -f qnx6 -r -p $fixture
+          if ($LASTEXITCODE -ne 0) { throw 'Explicit QNX6 fls failed' }
       - name: Build custom Java JAR
         shell: pwsh
         working-directory: ${{ env.TSK_HOME }}\\bindings\\java
