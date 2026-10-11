@@ -26,9 +26,9 @@ def main():
         raise ValueError("Partition too large for MBR")
     mbr = bytearray(SECTOR)
     # Boot flag, starting CHS, type, ending CHS, starting LBA, sectors.
-    struct.pack_into("<B3sB3sII", mbr, 446, 0, b"\x00\\x02\\x00", 0x4D,
-                     b"\xfe\\xff\\xff", START_LBA, sectors)
-    mbr[510:512] = b"\x55\\xaa"
+    struct.pack_into("<B3sB3sII", mbr, 446, 0, bytes((0,2,0)), 0x4D,
+                     bytes((254,255,255)), START_LBA, sectors)
+    mbr[510:512] = bytes((85,170))
     with args.disk.open("wb") as output:
         output.write(mbr)
         output.write(bytes(START_LBA * SECTOR - SECTOR))
