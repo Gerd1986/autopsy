@@ -200,6 +200,7 @@ jobs:
           $layout | ForEach-Object { Write-Host $_ }
           if ($LASTEXITCODE -ne 0) { throw 'mmls could not parse MBR' }
           if (-not ($layout -match '2048')) { throw 'mmls did not identify partition at LBA 2048' }
+          if (-not ($layout -match 'QNX6 Power-Safe \(0xb2\)')) { throw 'mmls did not identify QNX6 Power-Safe type 0xB2' }
           python tests/qnx6/verify_nfi_bytes.py --offset-sectors 2048 $disk $archive $fls[0].FullName $icat[0].FullName
           if ($LASTEXITCODE -ne 0) { throw 'MBR-wrapped QNX6 byte comparison failed' }
           Write-Host 'PASS: MBR partition detected and 23 QNX6 files verified byte-for-byte'
