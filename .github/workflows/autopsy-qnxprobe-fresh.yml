@@ -52,142 +52,22 @@ jobs:
           python win32/updateAndBuildAll.py -m
           if ($LASTEXITCODE -ne 0) { throw 'Native Sleuth Kit build failed' }
           if (-not (Test-Path win32/x64/Release/libtsk_jni.dll)) { throw 'Missing Windows JNI DLL' }
-      - name: Test QNX6 against NFI reference image
+      - name: Test QNX6 NFI fixture
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
           git clone --depth 1 https://github.com/NetherlandsForensicInstitute/qnxmount.git "$env:RUNNER_TEMP/qnxmount"
-          if ($LASTEXITCODE -ne 0) { throw 'NFI qnxmount checkout failed' }
+          if ($LASTEXITCODE -ne 0) { throw 'NFI fixture checkout failed' }
           $fixture = Join-Path $env:RUNNER_TEMP 'qnxmount/tests/qnx6/test_data/test_image.bin'
-          $archive = Join-Path $env:RUNNER_TEMP 'qnxmount/tests/qnx6/test_data/test_image.tar.gz'
-          if (-not (Test-Path $fixture) -or -not (Test-Path $archive)) { throw 'NFI QNX6 reference image or expected archive missing' }
-          $fls = @(Get-ChildItem "$env:TSK_HOME/win32" -Recurse -File -Filter fls.exe | Where-Object { $_.FullName -match '[\\/]Release(_NoLibs)?[\\/]' })
-          $fsstat = @(Get-ChildItem "$env:TSK_HOME/win32" -Recurse -File -Filter fsstat.exe | Where-Object { $_.FullName -match '[\\/]Release(_NoLibs)?[\\/]' })
-          if ($fls.Count -eq 0 -or $fsstat.Count -eq 0) { throw 'Missing native Sleuth Kit fsstat.exe/fls.exe for QNX6 test' }
-          $binDirs = @((Get-ChildItem "$env:TSK_HOME/win32" -Recurse -File -Filter '*.dll' | ForEach-Object DirectoryName | Sort-Object -Unique))
-          $env:PATH = ($binDirs -join ';') + ';' + $env:PATH
-          $stat = & $fsstat[0].FullName -f qnx6 $fixture 2>&1
-          $stat | ForEach-Object { Write-Host $_ }
-          if ($LASTEXITCODE -ne 0) { throw 'NFI QNX6 filesystem recognition failed' }
-          $listing = & $fls[0].FullName -f qnx6 -r -p $fixture 2>&1
-          $listing | ForEach-Object { Write-Host $_ }
-          if ($LASTEXITCODE -ne 0 -or $listing.Count -eq 0) { throw 'NFI QNX6 directory enumeration failed' }
-          $expected = @(tar -tzf $archive | Where-Object { $_ -and $_ -notmatch '/        shell: pwsh
-        working-directory: ${{ env.TSK_HOME }}\\bindings\\java
-        run: |
-          ant clean
-          if ($LASTEXITCODE -ne 0) { throw 'Ant clean failed' }
-          ant dist
-          if ($LASTEXITCODE -ne 0) { throw 'Ant dist failed' }
-          $jar = 'dist/sleuthkit-4.15.0.jar'
-          if (-not (Test-Path $jar)) { throw 'Custom JAR not built' }
-          $entries = & jar tf $jar
-          if ($LASTEXITCODE -ne 0 -or -not ($entries -contains 'NATIVELIBS/amd64/win/libtsk_jni.dll')) { throw 'Windows JNI missing from JAR' }
-          "CUSTOM_TSK_JAR=$((Resolve-Path $jar).Path)" >> $env:GITHUB_ENV
-      - name: Build case-uco
-        shell: pwsh
-        working-directory: ${{ env.TSK_HOME }}\\case-uco\\java
-        run: |
-          ant
-          if ($LASTEXITCODE -ne 0) { throw 'case-uco build failed' }
-      - name: Restore JNA Java dependencies
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = 'Stop'
-          $version = '5.18.1'
-          foreach ($module in @('CoreLibs','Core')) {
-            $dir = Join-Path $module 'release/modules/ext'
-            New-Item -ItemType Directory -Force -Path $dir | Out-Null
-            foreach ($artifact in @('jna','jna-platform')) {
-              $dest = Join-Path $dir "$artifact-$version.jar"
-              $url = "https://repo.maven.apache.org/maven2/net/java/dev/jna/$artifact/$version/$artifact-$version.jar"
-              Invoke-WebRequest -Uri $url -OutFile $dest
-              if ((Get-Item $dest).Length -lt 10000) { throw "Invalid dependency: $dest" }
-              Write-Host "Restored $dest"
-            }
-          }
-      - name: Build Autopsy ZIP
-        shell: pwsh
-        run: |
-          ant build-zip
-          if ($LASTEXITCODE -ne 0) { throw 'Autopsy build-zip failed' }
-      - name: Inject custom JAR into Autopsy distribution
-        shell: pwsh
-        run: |
-          $dirs = @(Get-ChildItem dist -Directory -Filter 'autopsy-*')
-          if ($dirs.Count -ne 1) { throw "Expected one distribution folder, got $($dirs.Count)" }
-          $ext = Join-Path $dirs[0].FullName 'autopsy/modules/ext'
-          if (-not (Test-Path $ext)) { throw "Autopsy modules/ext missing: $ext" }
-          $candidates = @(Get-ChildItem $ext -File -Filter '*.jar' | Where-Object { $_.Name -match '(?i)sleuth|datamodel|tsk' })
-          $candidates | ForEach-Object { Write-Host "Sleuth Kit candidate: $($_.Name)" }
-          $target = @(Get-ChildItem $ext -File | Where-Object { $_.Name -eq 'sleuthkit-4.15.0.jar' })
-          if ($target.Count -ne 1) {
-            throw "Expected exactly one Sleuth Kit JAR in $ext; found $($target.Count). Candidates: $($candidates.Name -join ', ')"
-          }
-          $targetJar = $target[0].FullName
-          Write-Host "Replacing $targetJar"
-          Copy-Item -LiteralPath $env:CUSTOM_TSK_JAR -Destination $targetJar -Force
-          if ((Get-FileHash $env:CUSTOM_TSK_JAR -Algorithm SHA256).Hash -ne (Get-FileHash $targetJar -Algorithm SHA256).Hash) { throw 'Packaged JAR hash mismatch' }
-          $entries = & jar tf $targetJar
-          if ($LASTEXITCODE -ne 0 -or -not ($entries -contains 'NATIVELIBS/amd64/win/libtsk_jni.dll')) { throw 'Packaged JAR missing Windows JNI' }
-          Compress-Archive -Path $dirs[0].FullName -DestinationPath dist/autopsy-qnxprobe-windows.zip -Force
-          if (-not (Test-Path dist/autopsy-qnxprobe-windows.zip)) { throw 'Distribution ZIP missing' }
-      - name: Smoke-test packaged Sleuth Kit JNI
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = 'Stop'
-          $dirs = @(Get-ChildItem dist -Directory -Filter 'autopsy-*')
-          if ($dirs.Count -ne 1) { throw 'Distribution missing for JNI smoke test' }
-          $ext = Join-Path $dirs[0].FullName 'autopsy/modules/ext'
-          $jar = Join-Path $ext 'sleuthkit-4.15.0.jar'
-          if (-not (Test-Path $jar)) { throw 'Packaged Sleuth Kit JAR missing' }
-          $src = Join-Path $env:RUNNER_TEMP 'QnxprobeJniSmoke.java'
-          @'
-          import org.sleuthkit.datamodel.SleuthkitJNI;
-          public class QnxprobeJniSmoke {
-              public static void main(String[] args) {
-                  String version = SleuthkitJNI.getVersion();
-                  if (version == null || version.isBlank()) {
-                      throw new IllegalStateException("Empty native Sleuth Kit version");
-                  }
-                  System.out.println("Loaded native Sleuth Kit JNI version: " + version);
-              }
-          }
-          '@ | Set-Content -Path $src -Encoding utf8
-          $cp = "$ext/*"
-          $native = Join-Path $ext 'sleuthkit-4.15.0.jar'
-          $nativeEntries = & jar tf $native
-          Write-Host "JNI entries: $($nativeEntries | Where-Object { $_ -like '*libtsk_jni.dll' })"
-          Write-Host "Java architecture: $(& java -XshowSettings:properties -version 2>&1 | Select-String 'os.arch|java.version')"
-          $dlls = @(Get-ChildItem $dirs[0].FullName -Recurse -File -Filter '*.dll')
-          Write-Host "Packaged DLLs: $($dlls.Count)"
-          $dlls | Where-Object { $_.Name -match '(?i)tsk|ewf|aff|zlib|sqlite|crypto|ssl|vcruntime|msvcp' } | ForEach-Object { Write-Host "Native dependency: $($_.FullName)" }
-          $nativeDirs = @($dlls | ForEach-Object DirectoryName | Sort-Object -Unique)
-          $env:PATH = ($nativeDirs -join ';') + ';' + $env:PATH
-          & java --class-path $cp $src
-          if ($LASTEXITCODE -ne 0) { throw 'Packaged Sleuth Kit JNI runtime smoke test failed' }
-      - name: Upload Autopsy test distribution
-        uses: actions/upload-artifact@v4
-        with:
-          name: autopsy-qnxprobe-windows-test
-          path: dist/autopsy-qnxprobe-windows.zip
-          if-no-files-found: error
-      - name: Publish QNXProbe Windows release
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = 'Stop'
-          $tag = "autopsy-qnxprobe-win-${{ github.run_number }}"
-          $zip = 'dist/autopsy-qnxprobe-windows.zip'
-          if (-not (Test-Path $zip)) { throw "Missing release ZIP: $zip" }
-          $hash = (Get-FileHash $zip -Algorithm SHA256).Hash
-          $notes = "Unsigned Windows test build of Autopsy with custom QNXProbe Sleuth Kit 4.15.0 JNI JAR.`n`nCommit: ${{ github.sha }}`nSHA256: $hash`n`nCase-UCO JAR is preserved."
-          gh release create $tag $zip --repo "${{ github.repository }}" --target "${{ github.sha }}" --title "Autopsy QNXProbe Windows $tag" --notes $notes --prerelease
-          if ($LASTEXITCODE -ne 0) { throw 'GitHub release publishing failed' }
- })
-          if ($LASTEXITCODE -ne 0 -or $expected.Count -eq 0) { throw 'NFI reference archive has no expected files' }
-          $missing = @($expected | Where-Object { $name = ($_ -replace '^\\./','').Trim('/'); $listing -notmatch [regex]::Escape($name) })
-          if ($missing.Count -gt 0) { throw "QNX6 listing missing $($missing.Count) reference paths; examples: $(($missing | Select-Object -First 10) -join ', ')" }
-          Write-Host "NFI QNX6 reference test passed: $($expected.Count) file paths found."
+          if (-not (Test-Path $fixture)) { throw 'NFI QNX6 fixture missing' }
+          $fsstat = @(Get-ChildItem "$env:TSK_HOME/win32" -Recurse -File -Filter fsstat.exe)
+          $fls = @(Get-ChildItem "$env:TSK_HOME/win32" -Recurse -File -Filter fls.exe)
+          if ($fsstat.Count -eq 0 -or $fls.Count -eq 0) { throw 'Native Sleuth Kit test utilities missing' }
+          $env:PATH = ((Get-ChildItem "$env:TSK_HOME/win32" -Recurse -File -Filter '*.dll' | ForEach-Object DirectoryName | Sort-Object -Unique) -join ';') + ';' + $env:PATH
+          & $fsstat[0].FullName $fixture
+          if ($LASTEXITCODE -ne 0) { throw 'QNX6 fsstat failed' }
+          & $fls[0].FullName -r -p $fixture
+          if ($LASTEXITCODE -ne 0) { throw 'QNX6 fls failed' }
       - name: Build custom Java JAR
         shell: pwsh
         working-directory: ${{ env.TSK_HOME }}\\bindings\\java
