@@ -1,9 +1,7 @@
 #!/usr/bin/env python3
 """Wrap the NFI QNX6 partition fixture in a standard MBR disk image.
 
-The partition starts at LBA 2048 (1 MiB); partition type 0x4D is QNX4.x.
-QNX6 does not have a universally assigned MBR type; 0x4D is used here
-only as a QNX-family partition marker, not for filesystem detection.
+The partition starts at LBA 2048 (1 MiB); partition type 0xB2 is QNX6 Power-Safe.
 """
 import argparse
 import pathlib
@@ -26,14 +24,14 @@ def main():
         raise ValueError("Partition too large for MBR")
     mbr = bytearray(SECTOR)
     # Boot flag, starting CHS, type, ending CHS, starting LBA, sectors.
-    struct.pack_into("<B3sB3sII", mbr, 446, 0, bytes((0,2,0)), 0x4D,
+    struct.pack_into("<B3sB3sII", mbr, 446, 0, bytes((0,2,0)), 0xB2,
                      bytes((254,255,255)), START_LBA, sectors)
     mbr[510:512] = bytes((85,170))
     with args.disk.open("wb") as output:
         output.write(mbr)
         output.write(bytes(START_LBA * SECTOR - SECTOR))
         output.write(payload)
-    print(f"MBR disk: {args.disk}, partition LBA={START_LBA}, sectors={sectors}, type=0x4D")
+    print(f"MBR disk: {args.disk}, partition LBA={START_LBA}, sectors={sectors}, type=0xB2")
 
 
 if __name__ == "__main__":
