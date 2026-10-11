@@ -33,7 +33,7 @@ jobs:
           java -version
           javac -version
           if ($LASTEXITCODE -ne 0) { throw 'Java compiler unavailable' }
-          if (-not ((& javac -version 2>&1) -match 'javac 17\\.')) { throw 'Expected JDK 17 for Autopsy build' }
+          if (-not ((& javac -version 2>&1) -match 'javac 17[.]')) { throw 'Expected JDK 17 for Autopsy build' }
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
