@@ -20,8 +20,10 @@ def main():
     print('fls output (first 12000 chars):', listing[:12000], flush=True)
     files = {}
     for line in listing.splitlines():
-        # TSK fls format: r/r <inode>[-attr-type-attr-id]: <relative path>
-        m = re.match(r"^r/[^\s]*\s+(\d+)(?:-\d+-\d+)?:\s*(.*?)\s*$", line)
+        # TSK fls format: -/r or r/r <inode>[-attr-type-attr-id]: <relative path>
+        # The first character is the directory-entry type (often unknown on QNX6),
+        # while the second character identifies the inode metadata as regular.
+        m = re.match(r"^[^/\s]/r\s+(\d+)(?:-\d+-\d+)?:\s*(.*?)\s*$", line)
         if m:
             files[m.group(2).removeprefix("./")] = m.group(1)
     if not files:
