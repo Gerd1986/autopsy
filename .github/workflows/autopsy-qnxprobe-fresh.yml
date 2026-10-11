@@ -97,17 +97,16 @@ jobs:
         run: |
           $dirs = @(Get-ChildItem dist -Directory -Filter 'autopsy-*')
           if ($dirs.Count -ne 1) { throw "Expected one distribution folder, got $($dirs.Count)" }
-          $extDirs = @(Get-ChildItem $dirs[0].FullName -Recurse -Directory | Where-Object { $_.FullName -match '[\\/]modules[\\/]ext$' })
-          $allJars = @(Get-ChildItem $dirs[0].FullName -Recurse -File -Filter '*.jar')
-          Write-Host "Found $($allJars.Count) JAR files and $($extDirs.Count) modules/ext directories"
-          $allJars | Where-Object { $_.Name -match 'sleuth|datamodel|tsk' } | ForEach-Object { Write-Host "Candidate: $($_.FullName)" }
-          $targets = @($allJars | Where-Object { $_.Name -match '^(sleuthkit|org-sleuthkit-datamodel)([-.].*)?\\.jar$' -and $_.FullName -match '[\\/]modules[\\/]ext[\\/]' })
-          if ($targets.Count -ne 1) {
-            $targets = @($allJars | Where-Object { $_.Name -match '^sleuthkit.*\\.jar$' })
+          $ext = Join-Path $dirs[0].FullName 'autopsy/modules/ext'
+          if (-not (Test-Path $ext)) { throw "Autopsy modules/ext missing: $ext" }
+          $candidates = @(Get-ChildItem $ext -File -Filter '*.jar' | Where-Object { $_.Name -match '(?i)sleuth|datamodel|tsk' })
+          $candidates | ForEach-Object { Write-Host "Sleuth Kit candidate: $($_.Name)" }
+          $target = @(Get-ChildItem $ext -File | Where-Object { $_.Name -match '(?i)^sleuthkit.*\\.jar$' })
+          if ($target.Count -ne 1) {
+            throw "Expected exactly one Sleuth Kit JAR in $ext; found $($target.Count). Candidates: $($candidates.Name -join ', ')"
           }
-          if ($targets.Count -ne 1) { throw "Cannot uniquely identify packaged Sleuth Kit JAR: $($targets.Count) matches. Inspect candidate listing." }
-          $targetJar = $targets[0].FullName
-          Write-Host "Replacing: $targetJar"
+          $targetJar = $target[0].FullName
+          Write-Host "Replacing $targetJar"
           Copy-Item -LiteralPath $env:CUSTOM_TSK_JAR -Destination $targetJar -Force
           if ((Get-FileHash $env:CUSTOM_TSK_JAR -Algorithm SHA256).Hash -ne (Get-FileHash $targetJar -Algorithm SHA256).Hash) { throw 'Packaged JAR hash mismatch' }
           $entries = & jar tf $targetJar
