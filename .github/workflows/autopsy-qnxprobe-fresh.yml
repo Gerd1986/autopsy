@@ -174,6 +174,34 @@ jobs:
           $env:PATH = ((Get-ChildItem "$env:TSK_HOME/win32" -Recurse -File -Filter '*.dll' | ForEach-Object DirectoryName | Sort-Object -Unique) -join ';') + ';' + $env:PATH
           python tests/qnx6/verify_nfi_bytes.py $image $archive $fls[0].FullName $icat[0].FullName
           if ($LASTEXITCODE -ne 0) { throw 'QNX6 byte comparison failed' }
+      - name: Verify QNX6 partition inside MBR disk image
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $data = Join-Path $env:RUNNER_TEMP 'qnxmount/tests/qnx6/test_data'
+          $partition = Join-Path $data 'test_image.bin'
+          $archive = Join-Path $data 'test_image.tar.gz'
+          $disk = Join-Path $env:RUNNER_TEMP 'qnx6-nfi-mbr.img'
+          python tests/qnx6/wrap_nfi_mbr.py $partition $disk
+          if ($LASTEXITCODE -ne 0) { throw 'MBR fixture creation failed' }
+          $env:PATH = ((Get-ChildItem "$env:TSK_HOME/win32" -Recurse -File -Filter '*.dll' | ForEach-Object DirectoryName | Sort-Object -Unique) -join ';') + ';' + $env:PATH
+          $mmls = @(Get-ChildItem "$env:TSK_HOME/win32" -Recurse -File -Filter mmls.exe | Select-Object -First 1)
+          $fls = @(Get-ChildItem "$env:TSK_HOME/win32" -Recurse -File -Filter fls.exe | Select-Object -First 1)
+          $icat = @(Get-ChildItem "$env:TSK_HOME/win32" -Recurse -File -Filter icat.exe | Select-Object -First 1)
+          if ($mmls.Count -ne 1 -or $fls.Count -ne 1 -or $icat.Count -ne 1) { throw 'Missing TSK MBR verification tools' }
+          $layout = & $mmls[0].FullName $disk
+          $layout | ForEach-Object { Write-Host $_ }
+          if ($LASTEXITCODE -ne 0) { throw 'mmls could not parse MBR' }
+          if (-not ($layout -match '2048')) { throw 'mmls did not identify partition at LBA 2048' }
+          python tests/qnx6/verify_nfi_bytes.py --offset-sectors 2048 $disk $archive $fls[0].FullName $icat[0].FullName
+          if ($LASTEXITCODE -ne 0) { throw 'MBR-wrapped QNX6 byte comparison failed' }
+          Write-Host 'PASS: MBR partition detected and 23 QNX6 files verified byte-for-byte'
+      - name: Upload MBR-wrapped QNX6 test image
+        uses: actions/upload-artifact@v4
+        with:
+          name: qnx6-nfi-mbr-test-image
+          path: ${{ runner.temp }}/qnx6-nfi-mbr.img
+          if-no-files-found: error
       - name: Build custom Java JAR
         shell: pwsh
         working-directory: ${{ env.TSK_HOME }}\\bindings\\java
