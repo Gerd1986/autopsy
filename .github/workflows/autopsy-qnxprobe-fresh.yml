@@ -203,6 +203,23 @@ jobs:
           python tests/qnx6/verify_nfi_bytes.py --offset-sectors 2048 $disk $archive $fls[0].FullName $icat[0].FullName
           if ($LASTEXITCODE -ne 0) { throw 'MBR-wrapped QNX6 byte comparison failed' }
           Write-Host 'PASS: MBR partition detected and 23 QNX6 files verified byte-for-byte'
+      - name: Verify QNX6 unallocated bitmap via blkls
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $disk = Join-Path $env:RUNNER_TEMP 'qnx6-nfi-mbr.img'
+          $blkls = @(Get-ChildItem "$env:TSK_HOME/win32" -Recurse -File -Filter blkls.exe | Select-Object -First 1)
+          if ($blkls.Count -ne 1) { throw 'Missing blkls.exe' }
+          $env:PATH = ((Get-ChildItem "$env:TSK_HOME/win32" -Recurse -File -Filter '*.dll' | ForEach-Object DirectoryName | Sort-Object -Unique) -join ';') + ';' + $env:PATH
+          $output = Join-Path $env:RUNNER_TEMP 'qnx6-unallocated.bin'
+          # Redirect native stdout without PowerShell's text encoding transformations.
+          $proc = Start-Process -FilePath $blkls[0].FullName -ArgumentList @('-f','qnx6','-o','2048',$disk) -Wait -PassThru -NoNewWindow -RedirectStandardOutput $output
+          if ($proc.ExitCode -ne 0) { throw "blkls failed with exit code $($proc.ExitCode)" }
+          $bytes = (Get-Item $output).Length
+          Write-Host "QNX6 unallocated output bytes: $bytes"
+          if ($bytes -le 0) { throw 'No unallocated blocks extracted; inspect QNX6 bitmap interpretation' }
+          if ($bytes % 1024 -ne 0) { throw 'Unallocated output not aligned to NFI QNX6 1024-byte block size' }
+          Write-Host "PASS: blkls extracted $($bytes / 1024) unallocated QNX6 blocks"
       - name: Upload MBR-wrapped QNX6 test image
         uses: actions/upload-artifact@v4
         with:
