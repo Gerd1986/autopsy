@@ -17,6 +17,7 @@ def main():
         p.add_argument(arg)
     a = p.parse_args()
     listing = run(a.fls, "-f", "qnx6", "-r", "-p", a.image).decode("utf-8", "replace")
+    print('fls output (first 12000 chars):', listing[:12000], flush=True)
     files = {}
     for line in listing.splitlines():
         # TSK fls format: r/r <inode>[-attr-type-attr-id]: <relative path>
