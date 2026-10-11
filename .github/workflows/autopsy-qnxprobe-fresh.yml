@@ -1,0 +1,97 @@
+name: Autopsy QNXProbe fresh Windows build
+
+on:
+  push:
+    branches: [develop]
+    paths:
+      - '.github/workflows/autopsy-qnxprobe-fresh.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    runs-on: windows-2025
+    timeout-minutes: 180
+    env:
+      TSK_HOME: ${{ github.workspace }}\\sleuthkit
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - name: Checkout Autopsy
+        uses: actions/checkout@v4
+      - name: Setup MSBuild
+        uses: microsoft/setup-msbuild@v2
+      - name: Setup Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: zulu
+          java-version: '21'
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+      - name: Install tools
+        shell: pwsh
+        run: |
+          choco install nuget.commandline -y
+          if ($LASTEXITCODE -ne 0) { throw 'nuget installation failed' }
+          choco install ant --ignore-dependencies -y
+          if ($LASTEXITCODE -ne 0) { throw 'ant installation failed' }
+      - name: Checkout merged Sleuth Kit
+        shell: pwsh
+        run: |
+          git clone --depth 1 --branch develop-4.1x https://github.com/Gerd1986/sleuthkit.git "$env:TSK_HOME"
+          if ($LASTEXITCODE -ne 0) { throw 'Sleuth Kit checkout failed' }
+          "JDK_HOME=$env:JAVA_HOME" >> $env:GITHUB_ENV
+          "INCLUDE=$env:INCLUDE;$env:JAVA_HOME/include;$env:JAVA_HOME/include/win32" >> $env:GITHUB_ENV
+      - name: Build native Sleuth Kit
+        shell: pwsh
+        working-directory: ${{ env.TSK_HOME }}
+        run: |
+          python win32/updateAndBuildAll.py -m
+          if ($LASTEXITCODE -ne 0) { throw 'Native Sleuth Kit build failed' }
+          if (-not (Test-Path win32/x64/Release/libtsk_jni.dll)) { throw 'Missing Windows JNI DLL' }
+      - name: Build custom Java JAR
+        shell: pwsh
+        working-directory: ${{ env.TSK_HOME }}\\bindings\\java
+        run: |
+          ant clean
+          if ($LASTEXITCODE -ne 0) { throw 'Ant clean failed' }
+          ant dist
+          if ($LASTEXITCODE -ne 0) { throw 'Ant dist failed' }
+          $jar = 'dist/sleuthkit-4.15.0.jar'
+          if (-not (Test-Path $jar)) { throw 'Custom JAR not built' }
+          $entries = & jar tf $jar
+          if ($LASTEXITCODE -ne 0 -or -not ($entries -contains 'NATIVELIBS/amd64/win/libtsk_jni.dll')) { throw 'Windows JNI missing from JAR' }
+          "CUSTOM_TSK_JAR=$((Resolve-Path $jar).Path)" >> $env:GITHUB_ENV
+      - name: Build case-uco
+        shell: pwsh
+        working-directory: ${{ env.TSK_HOME }}\\case-uco\\java
+        run: |
+          ant
+          if ($LASTEXITCODE -ne 0) { throw 'case-uco build failed' }
+      - name: Build Autopsy ZIP
+        shell: pwsh
+        run: |
+          ant -Dbuild.type=RELEASE build-zip
+          if ($LASTEXITCODE -ne 0) { throw 'Autopsy build-zip failed' }
+      - name: Inject custom JAR into Autopsy distribution
+        shell: pwsh
+        run: |
+          $dirs = @(Get-ChildItem dist -Directory -Filter 'autopsy-*')
+          if ($dirs.Count -ne 1) { throw "Expected one distribution folder, got $($dirs.Count)" }
+          $targetJars = @(Get-ChildItem $dirs[0].FullName -Recurse -File -Filter 'sleuthkit-*.jar')
+          if ($targetJars.Count -ne 1) { throw "Expected one packaged Sleuth Kit JAR, got $($targetJars.Count)" }
+          Copy-Item -LiteralPath $env:CUSTOM_TSK_JAR -Destination $targetJars[0].FullName -Force
+          if ((Get-FileHash $env:CUSTOM_TSK_JAR -Algorithm SHA256).Hash -ne (Get-FileHash $targetJars[0].FullName -Algorithm SHA256).Hash) { throw 'Packaged JAR hash mismatch' }
+          $entries = & jar tf $targetJars[0].FullName
+          if ($LASTEXITCODE -ne 0 -or -not ($entries -contains 'NATIVELIBS/amd64/win/libtsk_jni.dll')) { throw 'Packaged JAR missing Windows JNI' }
+          Compress-Archive -Path $dirs[0].FullName -DestinationPath dist/autopsy-qnxprobe-windows.zip -Force
+          if (-not (Test-Path dist/autopsy-qnxprobe-windows.zip)) { throw 'Distribution ZIP missing' }
+      - name: Upload Autopsy test distribution
+        uses: actions/upload-artifact@v4
+        with:
+          name: autopsy-qnxprobe-windows-test
+          path: dist/autopsy-qnxprobe-windows.zip
+          if-no-files-found: error
