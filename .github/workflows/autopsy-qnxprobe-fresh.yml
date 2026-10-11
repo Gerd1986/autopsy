@@ -120,13 +120,28 @@ jobs:
               with tarfile.open(archive, "r:gz") as tar:
                   names = [m.name for m in tar.getmembers() if m.isfile()]
                   print("NFI archive regular files:", len(names), names[:40])
-          for candidate in (0, 0x2000, 0x2e00):
+          from qnxprobe import sb_slots, check
+          size = image.stat().st_size
+          print("NFI image bytes:", size)
+          valid = []
+          with image.open("rb") as fh:
+              for off, rel in sb_slots(fh, 0, "NFI", [("NFI", 0, size)]):
+                  result = check(fh, off)
+                  if result is None:
+                      print("QNXProbe superblock slot:", hex(off), "no magic")
+                      continue
+                  endian, sb, bad = result
+                  print("QNXProbe superblock slot:", hex(off), "endian:", endian, "serial:", sb.get("serial"), "blocksize:", sb.get("blocksize"), "bad:", bad)
+                  if bad:
+                      continue
+                  valid.append((sb["serial"], off))
+          for serial, off in sorted(valid, reverse=True):
               try:
                   with image.open("rb") as fh:
-                      other = Qnx6Walker(fh, 0, candidate)
-                      print("QNXProbe superblock candidate:", hex(candidate), "root:", other.inode(1), "entries:", other.listdir(1))
+                      other = Qnx6Walker(fh, 0, off)
+                      print("QNXProbe valid generation:", serial, hex(off), "root:", other.inode(1), "entries:", other.listdir(1))
               except Exception as exc:
-                  print("QNXProbe candidate error:", hex(candidate), repr(exc))
+                  print("QNXProbe valid generation error:", serial, hex(off), repr(exc))
           '@ | Set-Content -Path "$env:RUNNER_TEMP/qnx6_reference.py" -Encoding utf8
           python "$env:RUNNER_TEMP/qnx6_reference.py" "$env:RUNNER_TEMP/qnxprobe-reference" "$env:RUNNER_TEMP/qnxmount/tests/qnx6/test_data/test_image.bin"
           if ($LASTEXITCODE -ne 0) { throw 'QNXProbe reference traversal failed' }
