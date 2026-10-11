@@ -101,7 +101,7 @@ jobs:
           if (-not (Test-Path $ext)) { throw "Autopsy modules/ext missing: $ext" }
           $candidates = @(Get-ChildItem $ext -File -Filter '*.jar' | Where-Object { $_.Name -match '(?i)sleuth|datamodel|tsk' })
           $candidates | ForEach-Object { Write-Host "Sleuth Kit candidate: $($_.Name)" }
-          $target = @(Get-ChildItem $ext -File | Where-Object { $_.Name -match '(?i)^sleuthkit.*\\.jar$' })
+          $target = @(Get-ChildItem $ext -File | Where-Object { $_.Name -eq 'sleuthkit-4.15.0.jar' })
           if ($target.Count -ne 1) {
             throw "Expected exactly one Sleuth Kit JAR in $ext; found $($target.Count). Candidates: $($candidates.Name -join ', ')"
           }
