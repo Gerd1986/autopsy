@@ -136,6 +136,15 @@ jobs:
           }
           '@ | Set-Content -Path $src -Encoding utf8
           $cp = "$ext/*"
+          $native = Join-Path $ext 'sleuthkit-4.15.0.jar'
+          $nativeEntries = & jar tf $native
+          Write-Host "JNI entries: $($nativeEntries | Where-Object { $_ -like '*libtsk_jni.dll' })"
+          Write-Host "Java architecture: $(& java -XshowSettings:properties -version 2>&1 | Select-String 'os.arch|java.version')"
+          $dlls = @(Get-ChildItem $dirs[0].FullName -Recurse -File -Filter '*.dll')
+          Write-Host "Packaged DLLs: $($dlls.Count)"
+          $dlls | Where-Object { $_.Name -match '(?i)tsk|ewf|aff|zlib|sqlite|crypto|ssl|vcruntime|msvcp' } | ForEach-Object { Write-Host "Native dependency: $($_.FullName)" }
+          $nativeDirs = @($dlls | ForEach-Object DirectoryName | Sort-Object -Unique)
+          $env:PATH = ($nativeDirs -join ';') + ';' + $env:PATH
           & java --class-path $cp $src
           if ($LASTEXITCODE -ne 0) { throw 'Packaged Sleuth Kit JNI runtime smoke test failed' }
       - name: Upload Autopsy test distribution
