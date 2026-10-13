@@ -283,7 +283,12 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Portable Java runtime creation failed' }
           $conf = Join-Path $dirs[0].FullName 'etc/autopsy.conf'
           $text = Get-Content $conf -Raw
-          $text = $text -replace '(?m)^jdkhome=.*
+          $text = $text -replace '(?m)^jdkhome=.*$', 'jdkhome="jre"'
+          if ($text -notmatch '(?m)^jdkhome=') { $text += "`r`njdkhome=`"jre`"`r`n" }
+          Set-Content $conf -Value $text -Encoding utf8
+          & "$runtime/bin/java.exe" -version
+          if ($LASTEXITCODE -ne 0) { throw 'Bundled Java does not run' }
+      - name: Inject custom JAR into Autopsy distribution
         shell: pwsh
         run: |
           $dirs = @(Get-ChildItem dist -Directory -Filter 'autopsy-*')
@@ -354,83 +359,6 @@ jobs:
           if (-not (Test-Path $log)) { throw 'Autopsy launcher did not initialize application logging' }
           Get-Content $log -Tail 100
           Stop-Process -Id $proc.Id -Force
-      - name: Upload Autopsy test distribution
-        uses: actions/upload-artifact@v4
-        with:
-          name: autopsy-qnxprobe-windows-test
-          path: dist/autopsy-qnxprobe-windows.zip
-          if-no-files-found: error
-      - name: Publish QNXProbe Windows release
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = 'Stop'
-          $tag = "autopsy-qnxprobe-win-${{ github.run_number }}"
-          $zip = 'dist/autopsy-qnxprobe-windows.zip'
-          if (-not (Test-Path $zip)) { throw "Missing release ZIP: $zip" }
-          $hash = (Get-FileHash $zip -Algorithm SHA256).Hash
-          $notes = "Unsigned Windows test build of Autopsy with custom QNXProbe Sleuth Kit 4.15.0 JNI JAR.`n`nCommit: ${{ github.sha }}`nSleuth Kit: $env:CUSTOM_TSK_REVISION (develop-4.1x; QNX6, QNX4, F2FS, OS-9 RBF, EFS)`nSHA256: $hash`n`nCase-UCO JAR is preserved."
-          gh release create $tag $zip --repo "${{ github.repository }}" --target "${{ github.sha }}" --title "Autopsy QNXProbe Windows $tag" --notes $notes --prerelease
-          if ($LASTEXITCODE -ne 0) { throw 'GitHub release publishing failed' }
-, 'jdkhome="jre"'
-          if ($text -notmatch '(?m)^jdkhome=') { $text += "`r`njdkhome=`"jre`"`r`n" }
-          Set-Content $conf -Value $text -Encoding utf8
-          & "$runtime/bin/java.exe" -version
-          if ($LASTEXITCODE -ne 0) { throw 'Bundled Java does not run' }
-      - name: Inject custom JAR into Autopsy distribution
-        shell: pwsh
-        run: |
-          $dirs = @(Get-ChildItem dist -Directory -Filter 'autopsy-*')
-          if ($dirs.Count -ne 1) { throw "Expected one distribution folder, got $($dirs.Count)" }
-          $ext = Join-Path $dirs[0].FullName 'autopsy/modules/ext'
-          if (-not (Test-Path $ext)) { throw "Autopsy modules/ext missing: $ext" }
-          $candidates = @(Get-ChildItem $ext -File -Filter '*.jar' | Where-Object { $_.Name -match '(?i)sleuth|datamodel|tsk' })
-          $candidates | ForEach-Object { Write-Host "Sleuth Kit candidate: $($_.Name)" }
-          $target = @(Get-ChildItem $ext -File | Where-Object { $_.Name -eq 'sleuthkit-4.15.0.jar' })
-          if ($target.Count -ne 1) {
-            throw "Expected exactly one Sleuth Kit JAR in $ext; found $($target.Count). Candidates: $($candidates.Name -join ', ')"
-          }
-          $targetJar = $target[0].FullName
-          Write-Host "Replacing $targetJar"
-          Copy-Item -LiteralPath $env:CUSTOM_TSK_JAR -Destination $targetJar -Force
-          if ((Get-FileHash $env:CUSTOM_TSK_JAR -Algorithm SHA256).Hash -ne (Get-FileHash $targetJar -Algorithm SHA256).Hash) { throw 'Packaged JAR hash mismatch' }
-          $entries = & jar tf $targetJar
-          if ($LASTEXITCODE -ne 0 -or -not ($entries -contains 'NATIVELIBS/amd64/win/libtsk_jni.dll')) { throw 'Packaged JAR missing Windows JNI' }
-          Compress-Archive -Path $dirs[0].FullName -DestinationPath dist/autopsy-qnxprobe-windows.zip -Force
-          if (-not (Test-Path dist/autopsy-qnxprobe-windows.zip)) { throw 'Distribution ZIP missing' }
-      - name: Smoke-test packaged Sleuth Kit JNI
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = 'Stop'
-          $dirs = @(Get-ChildItem dist -Directory -Filter 'autopsy-*')
-          if ($dirs.Count -ne 1) { throw 'Distribution missing for JNI smoke test' }
-          $ext = Join-Path $dirs[0].FullName 'autopsy/modules/ext'
-          $jar = Join-Path $ext 'sleuthkit-4.15.0.jar'
-          if (-not (Test-Path $jar)) { throw 'Packaged Sleuth Kit JAR missing' }
-          $src = Join-Path $env:RUNNER_TEMP 'QnxprobeJniSmoke.java'
-          @'
-          import org.sleuthkit.datamodel.SleuthkitJNI;
-          public class QnxprobeJniSmoke {
-              public static void main(String[] args) {
-                  String version = SleuthkitJNI.getVersion();
-                  if (version == null || version.isBlank()) {
-                      throw new IllegalStateException("Empty native Sleuth Kit version");
-                  }
-                  System.out.println("Loaded native Sleuth Kit JNI version: " + version);
-              }
-          }
-          '@ | Set-Content -Path $src -Encoding utf8
-          $cp = "$ext/*"
-          $native = Join-Path $ext 'sleuthkit-4.15.0.jar'
-          $nativeEntries = & jar tf $native
-          Write-Host "JNI entries: $($nativeEntries | Where-Object { $_ -like '*libtsk_jni.dll' })"
-          Write-Host "Java architecture: $(& java -XshowSettings:properties -version 2>&1 | Select-String 'os.arch|java.version')"
-          $dlls = @(Get-ChildItem $dirs[0].FullName -Recurse -File -Filter '*.dll')
-          Write-Host "Packaged DLLs: $($dlls.Count)"
-          $dlls | Where-Object { $_.Name -match '(?i)tsk|ewf|aff|zlib|sqlite|crypto|ssl|vcruntime|msvcp' } | ForEach-Object { Write-Host "Native dependency: $($_.FullName)" }
-          $nativeDirs = @($dlls | ForEach-Object DirectoryName | Sort-Object -Unique)
-          $env:PATH = ($nativeDirs -join ';') + ';' + $env:PATH
-          & java --class-path $cp $src
-          if ($LASTEXITCODE -ne 0) { throw 'Packaged Sleuth Kit JNI runtime smoke test failed' }
       - name: Upload Autopsy test distribution
         uses: actions/upload-artifact@v4
         with:
