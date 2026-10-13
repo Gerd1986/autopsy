@@ -50,6 +50,10 @@ jobs:
         run: |
           git clone --depth 1 --branch develop-4.1x https://github.com/Gerd1986/sleuthkit.git "$env:TSK_HOME"
           if ($LASTEXITCODE -ne 0) { throw 'Sleuth Kit checkout failed' }
+          $expected = 'cac76b4a4b45057992b51bea7a1713fa92c39ac8'
+          $actual = git -C "$env:TSK_HOME" rev-parse HEAD
+          if ($actual -ne $expected) { throw "Expected merged Sleuth Kit $expected, got $actual; update the build revision before retrying" }
+          "CUSTOM_TSK_REVISION=$actual" >> $env:GITHUB_ENV
           "JDK_HOME=$env:JAVA_HOME" >> $env:GITHUB_ENV
           "INCLUDE=$env:INCLUDE;$env:JAVA_HOME/include;$env:JAVA_HOME/include/win32" >> $env:GITHUB_ENV
       - name: Build native Sleuth Kit
@@ -59,7 +63,7 @@ jobs:
           python win32/updateAndBuildAll.py -m
           if ($LASTEXITCODE -ne 0) { throw 'Native Sleuth Kit build failed' }
           if (-not (Test-Path win32/x64/Release/libtsk_jni.dll)) { throw 'Missing Windows JNI DLL' }
-      - name: Record QNX6 source revision
+      - name: Record merged Sleuth Kit source revision
         shell: pwsh
         run: |
           git -C "$env:TSK_HOME" log -1 --format="%H %s"
@@ -336,6 +340,6 @@ jobs:
           $zip = 'dist/autopsy-qnxprobe-windows.zip'
           if (-not (Test-Path $zip)) { throw "Missing release ZIP: $zip" }
           $hash = (Get-FileHash $zip -Algorithm SHA256).Hash
-          $notes = "Unsigned Windows test build of Autopsy with custom QNXProbe Sleuth Kit 4.15.0 JNI JAR.`n`nCommit: ${{ github.sha }}`nSHA256: $hash`n`nCase-UCO JAR is preserved."
+          $notes = "Unsigned Windows test build of Autopsy with custom QNXProbe Sleuth Kit 4.15.0 JNI JAR.`n`nCommit: ${{ github.sha }}`nSleuth Kit: $env:CUSTOM_TSK_REVISION (develop-4.1x; QNX6, QNX4, F2FS, OS-9 RBF, EFS)`nSHA256: $hash`n`nCase-UCO JAR is preserved."
           gh release create $tag $zip --repo "${{ github.repository }}" --target "${{ github.sha }}" --title "Autopsy QNXProbe Windows $tag" --notes $notes --prerelease
           if ($LASTEXITCODE -ne 0) { throw 'GitHub release publishing failed' }
