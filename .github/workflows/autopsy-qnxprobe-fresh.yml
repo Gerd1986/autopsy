@@ -2,9 +2,13 @@ name: Autopsy QNXProbe fresh Windows build
 
 on:
   push:
-    branches: [develop]
+    branches: [develop, feature/nand-preprocessor-gui]
     paths:
       - '.github/workflows/autopsy-qnxprobe-fresh.yml'
+      - 'Core/src/org/sleuthkit/autopsy/casemodule/**'
+      - 'Core/build.xml'
+      - 'Tools/nand/**'
+      - 'tests/nand/**'
   workflow_dispatch:
 
 permissions:
@@ -50,7 +54,7 @@ jobs:
         run: |
           git clone --depth 1 --branch develop-4.1x https://github.com/Gerd1986/sleuthkit.git "$env:TSK_HOME"
           if ($LASTEXITCODE -ne 0) { throw 'Sleuth Kit checkout failed' }
-          $expected = 'cac76b4a4b45057992b51bea7a1713fa92c39ac8'
+          $expected = '89c86ef49169c6971fde7cd4f0dac4f46495fe79'
           $actual = git -C "$env:TSK_HOME" rev-parse HEAD
           if ($actual -ne $expected) { throw "Expected merged Sleuth Kit $expected, got $actual; update the build revision before retrying" }
           "CUSTOM_TSK_REVISION=$actual" >> $env:GITHUB_ENV
@@ -266,6 +270,26 @@ jobs:
               Write-Host "Restored $dest"
             }
           }
+      - name: Test NAND preprocessing bridge
+        shell: pwsh
+        run: |
+          python tests/nand/test_bridge.py
+          if ($LASTEXITCODE -ne 0) { throw 'NAND preprocessing bridge tests failed' }
+      - name: Bundle isolated Python runtime for NAND preprocessing
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $homeDir = python -c "import sys; print(sys.base_prefix)"
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot locate Python runtime' }
+          $dest = 'Tools/nand/python'
+          New-Item -ItemType Directory -Force -Path "$dest/Lib" | Out-Null
+          Copy-Item "$homeDir/python.exe", "$homeDir/python3.dll", "$homeDir/python310.dll", "$homeDir/vcruntime*.dll" $dest
+          Copy-Item "$homeDir/DLLs" $dest -Recurse
+          Get-ChildItem "$homeDir/Lib" | Where-Object { $_.Name -notin @('site-packages','__pycache__','test','idlelib','tkinter','ensurepip') } | Copy-Item -Destination "$dest/Lib" -Recurse
+          @('python310.zip','.','..','DLLs','Lib') | Set-Content "$dest/python310._pth" -Encoding ascii
+          Get-ChildItem $homeDir -File -Filter 'LICENSE*' | Copy-Item -Destination $dest
+          & "$dest/python.exe" -I Tools/nand/preprocess_ubi.py --list-profiles
+          if ($LASTEXITCODE -ne 0) { throw 'Bundled NAND Python runtime failed' }
       - name: Build Autopsy ZIP
         shell: pwsh
         run: |
@@ -301,6 +325,10 @@ jobs:
           if ($target.Count -ne 1) {
             throw "Expected exactly one Sleuth Kit JAR in $ext; found $($target.Count). Candidates: $($candidates.Name -join ', ')"
           }
+          $nand = Join-Path $dirs[0].FullName 'autopsy/nand'
+          if (-not (Test-Path "$nand/profiles/qualcomm-kommbox-4352.json")) { throw 'Packaged NAND profile missing' }
+          & "$nand/python/python.exe" "$nand/preprocess_ubi.py" --list-profiles
+          if ($LASTEXITCODE -ne 0) { throw 'Packaged NAND preprocessor failed' }
           $targetJar = $target[0].FullName
           Write-Host "Replacing $targetJar"
           Copy-Item -LiteralPath $env:CUSTOM_TSK_JAR -Destination $targetJar -Force
@@ -366,6 +394,7 @@ jobs:
           path: dist/autopsy-qnxprobe-windows.zip
           if-no-files-found: error
       - name: Publish QNXProbe Windows release
+        if: github.ref == 'refs/heads/develop'
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
@@ -373,6 +402,6 @@ jobs:
           $zip = 'dist/autopsy-qnxprobe-windows.zip'
           if (-not (Test-Path $zip)) { throw "Missing release ZIP: $zip" }
           $hash = (Get-FileHash $zip -Algorithm SHA256).Hash
-          $notes = "Unsigned Windows test build of Autopsy with custom QNXProbe Sleuth Kit 4.15.0 JNI JAR.`n`nCommit: ${{ github.sha }}`nSleuth Kit: $env:CUSTOM_TSK_REVISION (develop-4.1x; QNX6, QNX4, F2FS, OS-9 RBF, EFS)`nSHA256: $hash`n`nCase-UCO JAR is preserved."
+          $notes = "Unsigned Windows test build of Autopsy with custom QNXProbe Sleuth Kit 4.15.0 JNI JAR.`n`nCommit: ${{ github.sha }}`nSleuth Kit: $env:CUSTOM_TSK_REVISION (develop-4.1x; QNX6, QNX4, F2FS, OS-9 RBF, EFS, UBI/UBIFS; optional GUI NAND preprocessing with bundled Python)`nSHA256: $hash`n`nCase-UCO JAR is preserved."
           gh release create $tag $zip --repo "${{ github.repository }}" --target "${{ github.sha }}" --title "Autopsy QNXProbe Windows $tag" --notes $notes --prerelease
           if ($LASTEXITCODE -ne 0) { throw 'GitHub release publishing failed' }

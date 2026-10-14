@@ -72,6 +72,11 @@ public class ImageFilePanel extends JPanel {
     private final ReentrantLock validationWaitingLock = new ReentrantLock();
     private final ReentrantLock validationLock = new ReentrantLock();
 
+    // Optional and deliberately not persisted between data sources.
+    private final JTextField nandConfigField = new JTextField();
+    private final javax.swing.JButton nandBrowseButton = new javax.swing.JButton("Browse...");
+    private final javax.swing.JButton nandClearButton = new javax.swing.JButton("None");
+
     private Runnable validateAction = null;
     private Future<?> validateFuture = null;
 
@@ -86,6 +91,7 @@ public class ImageFilePanel extends JPanel {
     private ImageFilePanel(String context, List<FileFilter> fileChooserFilters) {
         this.contextName = context;
         initComponents();
+        initNandConfigControls();
 
         // Populate the drop down list of time zones
         createTimeZoneList();
@@ -135,10 +141,57 @@ public class ImageFilePanel extends JPanel {
                 instance.getMd5TextFieldField(), 
                 instance.getSha1TextField(), 
                 instance.getSha256TextField(), 
-                instance.getPasswordTextField())) {
+                instance.getPasswordTextField(),
+                instance.nandConfigField)) {
             textField.getDocument().addDocumentListener(delayedValidationListener);
         }
         return instance;
+    }
+
+    private void initNandConfigControls() {
+        javax.swing.JLabel label = new javax.swing.JLabel("NAND config (optional):");
+        label.setLabelFor(nandConfigField);
+        nandConfigField.setEditable(false);
+        nandConfigField.setToolTipText("Select a JSON device profile to correct ECC and remove stuff/OOB bytes before analysis. Leave empty to import normally.");
+        javax.swing.JPanel controls = new javax.swing.JPanel(new java.awt.BorderLayout(5, 0));
+        controls.add(nandConfigField, java.awt.BorderLayout.CENTER);
+        javax.swing.JPanel buttons = new javax.swing.JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.RIGHT, 3, 0));
+        buttons.add(nandBrowseButton);
+        buttons.add(nandClearButton);
+        controls.add(buttons, java.awt.BorderLayout.EAST);
+        java.awt.GridBagConstraints c = new java.awt.GridBagConstraints();
+        c.gridx = 0;
+        c.gridy = 11;
+        c.anchor = java.awt.GridBagConstraints.WEST;
+        c.insets = new java.awt.Insets(5, 5, 5, 5);
+        add(label, c);
+        c.gridx = 1;
+        c.gridwidth = 2;
+        c.fill = java.awt.GridBagConstraints.HORIZONTAL;
+        c.weightx = 1;
+        add(controls, c);
+        nandBrowseButton.addActionListener(e -> {
+            JFileChooser chooser = new JFileChooser();
+            chooser.setFileSelectionMode(JFileChooser.FILES_ONLY);
+            chooser.setFileFilter(new javax.swing.filechooser.FileNameExtensionFilter("NAND device profiles (*.json)", "json"));
+            File profiles = org.openide.modules.InstalledFileLocator.getDefault().locate("nand/profiles", null, false);
+            if (profiles != null) {
+                chooser.setCurrentDirectory(profiles);
+            }
+            if (chooser.showOpenDialog(this) == JFileChooser.APPROVE_OPTION) {
+                // Original dump hashes/password must never be applied to the derived image.
+                md5HashTextField.setText("");
+                sha1HashTextField.setText("");
+                sha256HashTextField.setText("");
+                passwordTextField.setText("");
+                nandConfigField.setText(chooser.getSelectedFile().getAbsolutePath());
+            }
+        });
+        nandClearButton.addActionListener(e -> nandConfigField.setText(""));
+    }
+
+    String getNandConfigPath() {
+        return nandConfigField.getText().trim();
     }
 
     private JTextField getPathTextField() {
@@ -285,7 +338,7 @@ public class ImageFilePanel extends JPanel {
         errorLabel.setPreferredSize(new java.awt.Dimension(200, 60));
         gridBagConstraints = new java.awt.GridBagConstraints();
         gridBagConstraints.gridx = 0;
-        gridBagConstraints.gridy = 11;
+        gridBagConstraints.gridy = 12;
         gridBagConstraints.gridwidth = 3;
         gridBagConstraints.fill = java.awt.GridBagConstraints.BOTH;
         gridBagConstraints.anchor = java.awt.GridBagConstraints.NORTHWEST;
@@ -430,7 +483,7 @@ public class ImageFilePanel extends JPanel {
 
         gridBagConstraints = new java.awt.GridBagConstraints();
         gridBagConstraints.gridx = 0;
-        gridBagConstraints.gridy = 12;
+        gridBagConstraints.gridy = 13;
         gridBagConstraints.weighty = 1.0;
         add(spacer, gridBagConstraints);
 
@@ -442,7 +495,7 @@ public class ImageFilePanel extends JPanel {
         loadingLabel.setPreferredSize(new java.awt.Dimension(200, 60));
         gridBagConstraints = new java.awt.GridBagConstraints();
         gridBagConstraints.gridx = 0;
-        gridBagConstraints.gridy = 11;
+        gridBagConstraints.gridy = 12;
         gridBagConstraints.gridwidth = 3;
         gridBagConstraints.fill = java.awt.GridBagConstraints.BOTH;
         gridBagConstraints.anchor = java.awt.GridBagConstraints.NORTHWEST;
@@ -595,6 +648,7 @@ public class ImageFilePanel extends JPanel {
 
     public void reset() {
         //reset the UI elements to default 
+        nandConfigField.setText("");
         pathTextField.setText(null);
         this.md5HashTextField.setText(null);
         this.sha1HashTextField.setText(null);
@@ -613,9 +667,13 @@ public class ImageFilePanel extends JPanel {
         this.passwordTextField.setEnabled(enabled);
         this.pathTextField.setEnabled(enabled);
         this.sectorSizeComboBox.setEnabled(enabled);
-        this.md5HashTextField.setEnabled(enabled && validNonE01);
-        this.sha1HashTextField.setEnabled(enabled && validNonE01);
-        this.sha256HashTextField.setEnabled(enabled && validNonE01);
+        boolean plainImport = getNandConfigPath().isEmpty();
+        nandBrowseButton.setEnabled(enabled);
+        nandClearButton.setEnabled(enabled);
+        this.passwordTextField.setEnabled(enabled && plainImport);
+        this.md5HashTextField.setEnabled(enabled && validNonE01 && plainImport);
+        this.sha1HashTextField.setEnabled(enabled && validNonE01 && plainImport);
+        this.sha256HashTextField.setEnabled(enabled && validNonE01 && plainImport);
         this.timeZoneComboBox.setEnabled(enabled);
     }
 
@@ -668,6 +726,18 @@ public class ImageFilePanel extends JPanel {
                 if (!StringUtils.isBlank(sha256) && !HashUtility.isValidSha256Hash(sha256)) {
                     showError(Bundle.ImageFilePanel_validatePanel_invalidSHA256());
                     return false;
+                }
+
+                if (!getNandConfigPath().isEmpty()) {
+                    if (!new File(path).isFile() || !new File(path).canRead()
+                            || !new File(getNandConfigPath()).isFile() || !new File(getNandConfigPath()).canRead()) {
+                        showError("NAND preprocessing requires a readable dump file and JSON configuration.");
+                        return false;
+                    }
+                    // Raw NAND may not be openable by TSK until cleanup. The preprocessor
+                    // validates the profile and ECC before the derived image enters the case.
+                    showError(null);
+                    return true;
                 }
 
                 try {

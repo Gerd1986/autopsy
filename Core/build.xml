@@ -30,7 +30,11 @@
         </copy>
     </target>
 
-    <target name="get-thirdparty-dependencies" description="get third-party dependencies"> 
+    <target name="get-thirdparty-dependencies" description="get third-party dependencies">
+        <!-- Ship NAND scripts/profiles; optional platform Python runtime is built in CI. -->
+        <copy todir="${basedir}/release/nand">
+            <fileset dir="${basedir}/../Tools/nand" excludes=".gitignore,**/__pycache__/**,**/*.pyc"/>
+        </copy>
         <!--
             Copy netbeans localization jars: 
             This contains jars provided in Netbeans 8 RCP that provide localization bundles.  
