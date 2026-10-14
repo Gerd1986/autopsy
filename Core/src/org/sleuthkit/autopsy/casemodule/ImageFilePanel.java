@@ -833,7 +833,7 @@ public class ImageFilePanel extends JPanel {
         + " See log to determine which module. Some data could be incomplete.\n"})
     private void updateHelper() {
         String path = getContentPaths();
-        if (isValidNonE01(path)) {
+        if (isValidNonE01(path) && getNandConfigPath().isEmpty()) {
             setHashValuesComponentsEnabled(true);
         } else {
             setHashValuesComponentsEnabled(false);
