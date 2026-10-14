@@ -68,7 +68,7 @@ public class ImageDSProcessor implements DataSourceProcessor, AutoIngestDataSour
     private static final List<FileFilter> filtersList = new ArrayList<>();
     private final ImageFilePanel configPanel;
     private volatile AddImageTask addImageTask;
-    private volatile boolean importCancelled;
+    private volatile java.util.concurrent.atomic.AtomicBoolean importCancellation = new java.util.concurrent.atomic.AtomicBoolean();
     private volatile IngestStream ingestStream = null;
     private Image image = null;
     /*
@@ -310,19 +310,23 @@ public class ImageDSProcessor implements DataSourceProcessor, AutoIngestDataSour
 
     
     /** Snapshot the wizard on its caller thread; run cleanup and image setup off the EDT. */
-    private void startGuiImport(String suppliedPassword, Host selectedHost, IngestJobSettings settings,
+    private synchronized void startGuiImport(String suppliedPassword, Host selectedHost, IngestJobSettings settings,
             DataSourceProcessorProgressMonitor progress, DataSourceProcessorCallback callback) {
         readConfigSettings();
         this.host = selectedHost;
         this.password = Objects.toString(suppliedPassword, this.password);
         String profile = configPanel.getNandConfigPath();
         Case currentCase = Case.getCurrentCase();
-        importCancelled = false;
+        importCancellation.set(true);
+        java.util.concurrent.atomic.AtomicBoolean cancellation = new java.util.concurrent.atomic.AtomicBoolean();
+        importCancellation = cancellation;
+        String selectedImagePath = imagePath;
         image = null;
         addImageTask = null;
         ingestStream = null;
         new Thread(() -> {
             try {
+                String preparedImagePath = selectedImagePath;
                 if (!profile.isEmpty()) {
                     progress.setIndeterminate(true);
                     progress.setProgressText("NAND preprocessing: correcting ECC and removing stuff/OOB bytes...");
@@ -331,36 +335,41 @@ public class ImageDSProcessor implements DataSourceProcessor, AutoIngestDataSour
                     List<String> python = bundledPython != null
                             ? List.of(bundledPython.getAbsolutePath())
                             : List.of(org.sleuthkit.autopsy.coreutils.PlatformUtil.isWindowsOS() ? "python" : "python3");
-                    imagePath = NandPreprocessor.preprocess(java.nio.file.Paths.get(imagePath),
+                    preparedImagePath = NandPreprocessor.preprocess(java.nio.file.Paths.get(selectedImagePath),
                             java.nio.file.Paths.get(profile), java.nio.file.Paths.get(currentCase.getExportDirectory()),
-                            script == null ? null : script.toPath(), python, () -> importCancelled).toString();
-                    // Supplied hashes describe the original dump, not the transformed bytes.
-                    md5 = null;
-                    sha1 = null;
-                    sha256 = null;
-                    this.password = null;
+                            script == null ? null : script.toPath(), python, cancellation::get).toString();
                 }
-                if (importCancelled) {
-                    throw new InterruptedException("Data source import cancelled.");
-                }
-                if (Case.getCurrentCase() != currentCase) {
-                    throw new java.io.IOException("The case changed during NAND preprocessing. Import the exported image in the intended case.");
-                }
-                progress.setProgressText("Adding image: " + imagePath);
-                image = SleuthkitJNI.addImageToDatabase(currentCase.getSleuthkitCase(),
-                        new String[]{imagePath}, sectorSize, timeZone, md5, sha1, sha256, deviceId, this.password, this.host);
-                ingestStream = new DefaultIngestStream();
-                if (settings != null) {
-                    try {
-                        ingestStream = IngestManager.getInstance().openIngestStream(image, settings);
-                    } catch (TskCoreException ex) {
-                        logger.log(Level.SEVERE, "Error starting ingest modules", ex);
+                synchronized (ImageDSProcessor.this) {
+                    if (cancellation.get() || importCancellation != cancellation) {
+                        throw new InterruptedException("Data source import cancelled.");
                     }
-                }
-                doAddImageProcess(deviceId, imagePath, sectorSize, timeZone, ignoreFatOrphanFiles,
-                        md5, sha1, sha256, this.password, progress, callback);
-                if (importCancelled) {
-                    cancel();
+                    imagePath = preparedImagePath;
+                    if (!profile.isEmpty()) {
+                        // Supplied hashes describe the original dump, not the transformed bytes.
+                        md5 = null;
+                        sha1 = null;
+                        sha256 = null;
+                        this.password = null;
+                    }
+                    if (Case.getCurrentCase() != currentCase) {
+                        throw new java.io.IOException("The case changed during NAND preprocessing. Import the exported image in the intended case.");
+                    }
+                    progress.setProgressText("Adding image: " + imagePath);
+                    image = SleuthkitJNI.addImageToDatabase(currentCase.getSleuthkitCase(),
+                            new String[]{imagePath}, sectorSize, timeZone, md5, sha1, sha256, deviceId, this.password, this.host);
+                    ingestStream = new DefaultIngestStream();
+                    if (settings != null) {
+                        try {
+                            ingestStream = IngestManager.getInstance().openIngestStream(image, settings);
+                        } catch (TskCoreException ex) {
+                            logger.log(Level.SEVERE, "Error starting ingest modules", ex);
+                        }
+                    }
+                    doAddImageProcess(deviceId, imagePath, sectorSize, timeZone, ignoreFatOrphanFiles,
+                            md5, sha1, sha256, this.password, progress, callback);
+                    if (cancellation.get()) {
+                        cancel();
+                    }
                 }
             } catch (Exception ex) {
                 logger.log(Level.SEVERE, "Error preparing image data source", ex);
@@ -476,7 +485,7 @@ public class ImageDSProcessor implements DataSourceProcessor, AutoIngestDataSour
      */
     @Override
     public void cancel() {
-        importCancelled = true;
+        importCancellation.set(true);
         if (null != addImageTask) {
             addImageTask.cancelTask();
         }
@@ -490,7 +499,8 @@ public class ImageDSProcessor implements DataSourceProcessor, AutoIngestDataSour
      * processor.
      */
     @Override
-    public void reset() {
+    public synchronized void reset() {
+        importCancellation.set(true);
         deviceId = null;
         imagePath = null;
         timeZone = null;
