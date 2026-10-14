@@ -73,7 +73,7 @@ public class ImageFilePanel extends JPanel {
     private final ReentrantLock validationLock = new ReentrantLock();
 
     // Optional and deliberately not persisted between data sources.
-    private final JTextField nandConfigField = new JTextField();
+    private final JTextField nandConfigField = new JTextField(12);
     private final javax.swing.JButton nandBrowseButton = new javax.swing.JButton("Browse...");
     private final javax.swing.JButton nandClearButton = new javax.swing.JButton("None");
 
