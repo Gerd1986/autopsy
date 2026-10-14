@@ -125,6 +125,11 @@ def main():
         slow.write_text("import pathlib,sys,time\noutput=pathlib.Path(sys.argv[sys.argv.index('--output')+1])\noutput.write_bytes(b'incomplete')\n(output.parent / '.clean.ubi.partial').write_bytes(b'partial')\ntime.sleep(30)\n")
         cancelled = run(selected_script=slow, mode="cancel")
         assert cancelled.returncode == 3, cancelled.stderr
+        interrupted = run(selected_script=slow, mode="interrupt")
+        assert interrupted.returncode == 3, interrupted.stderr
+        incomplete = work / "incomplete success.py"
+        incomplete.write_text("import pathlib,sys\noutput=pathlib.Path(sys.argv[sys.argv.index('--output')+1])\noutput.write_bytes(b'no report')\n")
+        assert run(selected_script=incomplete).returncode != 0
         dirs = list((exports / "nand-preprocessed").iterdir())
         success = {output.parent, Path(second.stdout.strip()).parent}
         for directory in dirs:
@@ -134,7 +139,7 @@ def main():
                 assert (directory / "device-profile.json").exists()
                 assert (directory / "preprocessor.log").exists()
         assert hashlib.sha256(source.read_bytes()).hexdigest() == original_hash
-        print("PASS: Java bridge, BCH correction, reports, config snapshots, separate exports, malformed profile, ECC failure, partial dump, missing tool and cancellation")
+        print("PASS: Java bridge, BCH correction, reports, config snapshots, separate exports, malformed profile, ECC failure, partial dump, missing tool, incomplete result, cancellation and interruption")
 
 if __name__ == "__main__":
     main()

@@ -9,6 +9,18 @@ public final class BridgeHarness {
     public static void main(String[] args) throws Exception {
         long start = System.nanoTime();
         boolean cancel = args[5].equals("cancel");
+        if (args[5].equals("interrupt")) {
+            Thread caller = Thread.currentThread();
+            Thread interrupt = new Thread(() -> {
+                try {
+                    Thread.sleep(500);
+                    caller.interrupt();
+                } catch (InterruptedException ex) {
+                    Thread.currentThread().interrupt();
+                }
+            });
+            interrupt.start();
+        }
         try {
             Path result = NandPreprocessor.preprocess(Path.of(args[0]), Path.of(args[1]),
                     Path.of(args[2]), Path.of(args[3]), List.of(args[4]),

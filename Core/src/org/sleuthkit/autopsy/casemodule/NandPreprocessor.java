@@ -71,7 +71,18 @@ final class NandPreprocessor {
             if (process != null && process.isAlive()) {
                 process.destroyForcibly();
                 // The child must stop writing before incomplete files are removed.
-                process.waitFor();
+                boolean interrupted = Thread.interrupted();
+                while (true) {
+                    try {
+                        process.waitFor();
+                        break;
+                    } catch (InterruptedException ex) {
+                        interrupted = true;
+                    }
+                }
+                if (interrupted) {
+                    Thread.currentThread().interrupt();
+                }
             }
             if (!succeeded) {
                 // Preserve the config and log for diagnosis; never leave an incomplete image.
