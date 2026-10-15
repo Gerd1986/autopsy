@@ -54,7 +54,11 @@ jobs:
         run: |
           git clone --depth 1 --branch develop-4.1x https://github.com/Gerd1986/sleuthkit.git "$env:TSK_HOME"
           if ($LASTEXITCODE -ne 0) { throw 'Sleuth Kit checkout failed' }
-          $expected = '89c86ef49169c6971fde7cd4f0dac4f46495fe79'
+          $expected = 'f4bf2eacfecc772ce2b1905080c5a86eb81df8df'
+          git -C "$env:TSK_HOME" fetch --depth 1 origin $expected
+          if ($LASTEXITCODE -ne 0) { throw 'Pinned Sleuth Kit fetch failed' }
+          git -C "$env:TSK_HOME" checkout --detach $expected
+          if ($LASTEXITCODE -ne 0) { throw 'Pinned Sleuth Kit checkout failed' }
           $actual = git -C "$env:TSK_HOME" rev-parse HEAD
           if ($actual -ne $expected) { throw "Expected merged Sleuth Kit $expected, got $actual; update the build revision before retrying" }
           "CUSTOM_TSK_REVISION=$actual" >> $env:GITHUB_ENV
@@ -346,16 +350,35 @@ jobs:
           $ext = Join-Path $dirs[0].FullName 'autopsy/modules/ext'
           $jar = Join-Path $ext 'sleuthkit-4.15.0.jar'
           if (-not (Test-Path $jar)) { throw 'Packaged Sleuth Kit JAR missing' }
+          @'
+          import os, pathlib, sys
+          sys.path.insert(0, str(pathlib.Path(os.environ['TSK_HOME']) / 'tests'))
+          from ftl100_fixture import fat12, encode
+          logical, _ = fat12()
+          dest = pathlib.Path(os.environ['RUNNER_TEMP'])
+          (dest / 'ftl100-jni-expected.img').write_bytes(logical)
+          (dest / 'ftl100-jni-nor.bin').write_bytes(encode(logical, prefix=0xf40000))
+          '@ | Set-Content -Path "$env:RUNNER_TEMP/ftl100_jni_fixture.py" -Encoding utf8
+          python "$env:RUNNER_TEMP/ftl100_jni_fixture.py"
+          if ($LASTEXITCODE -ne 0) { throw 'FTL100 JNI fixture generation failed' }
           $src = Join-Path $env:RUNNER_TEMP 'QnxprobeJniSmoke.java'
           @'
           import org.sleuthkit.datamodel.SleuthkitJNI;
           public class QnxprobeJniSmoke {
-              public static void main(String[] args) {
+              public static void main(String[] args) throws Exception {
                   String version = SleuthkitJNI.getVersion();
                   if (version == null || version.isBlank()) {
                       throw new IllegalStateException("Empty native Sleuth Kit version");
                   }
                   System.out.println("Loaded native Sleuth Kit JNI version: " + version);
+                  byte[] expected = java.nio.file.Files.readAllBytes(java.nio.file.Path.of(args[1]));
+                  long image = SleuthkitJNI.openImage(new String[] {args[0]});
+                  byte[] actual = new byte[expected.length];
+                  int count = SleuthkitJNI.readImg(image, actual, 0, actual.length);
+                  if (count != expected.length || !java.util.Arrays.equals(expected, actual)) {
+                      throw new IllegalStateException("Packaged JNI FTL100 autodetection/recovery mismatch");
+                  }
+                  System.out.println("Packaged JNI: late-header FTL100 autodetection and complete logical image verified");
               }
           }
           '@ | Set-Content -Path $src -Encoding utf8
@@ -369,7 +392,7 @@ jobs:
           $dlls | Where-Object { $_.Name -match '(?i)tsk|ewf|aff|zlib|sqlite|crypto|ssl|vcruntime|msvcp' } | ForEach-Object { Write-Host "Native dependency: $($_.FullName)" }
           $nativeDirs = @($dlls | ForEach-Object DirectoryName | Sort-Object -Unique)
           $env:PATH = ($nativeDirs -join ';') + ';' + $env:PATH
-          & "$($dirs[0].FullName)/jre/bin/java.exe" --class-path $cp $src
+          & "$($dirs[0].FullName)/jre/bin/java.exe" --class-path $cp $src "$env:RUNNER_TEMP/ftl100-jni-nor.bin" "$env:RUNNER_TEMP/ftl100-jni-expected.img"
           if ($LASTEXITCODE -ne 0) { throw 'Packaged Sleuth Kit JNI runtime smoke test failed' }
       - name: Smoke-test Autopsy launcher with bundled Java
         shell: pwsh
@@ -402,6 +425,6 @@ jobs:
           $zip = 'dist/autopsy-qnxprobe-windows.zip'
           if (-not (Test-Path $zip)) { throw "Missing release ZIP: $zip" }
           $hash = (Get-FileHash $zip -Algorithm SHA256).Hash
-          $notes = "Unsigned Windows test build of Autopsy with custom QNXProbe Sleuth Kit 4.15.0 JNI JAR.`n`nCommit: ${{ github.sha }}`nSleuth Kit: $env:CUSTOM_TSK_REVISION (develop-4.1x; QNX6, QNX4, F2FS, OS-9 RBF, EFS, UBI/UBIFS; optional GUI NAND preprocessing with bundled Python)`nSHA256: $hash`n`nCase-UCO JAR is preserved."
+          $notes = "Unsigned Windows test build of Autopsy with custom QNXProbe Sleuth Kit 4.15.0 JNI JAR.`n`nCommit: ${{ github.sha }}`nSleuth Kit: $env:CUSTOM_TSK_REVISION (develop-4.1x; QNX6, QNX4, F2FS, OS-9 RBF, EFS, UBI/UBIFS, Datalight/Reliance, FTL100 full-dump autodetection; optional GUI NAND preprocessing with bundled Python)`nSHA256: $hash`n`nCase-UCO JAR is preserved."
           gh release create $tag $zip --repo "${{ github.repository }}" --target "${{ github.sha }}" --title "Autopsy QNXProbe Windows $tag" --notes $notes --prerelease
           if ($LASTEXITCODE -ne 0) { throw 'GitHub release publishing failed' }
