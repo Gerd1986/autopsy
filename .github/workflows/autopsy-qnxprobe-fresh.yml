@@ -364,6 +364,7 @@ jobs:
           $src = Join-Path $env:RUNNER_TEMP 'QnxprobeJniSmoke.java'
           @'
           import org.sleuthkit.datamodel.SleuthkitJNI;
+          import org.sleuthkit.datamodel.SleuthkitCase;
           public class QnxprobeJniSmoke {
               public static void main(String[] args) throws Exception {
                   String version = SleuthkitJNI.getVersion();
@@ -372,13 +373,19 @@ jobs:
                   }
                   System.out.println("Loaded native Sleuth Kit JNI version: " + version);
                   byte[] expected = java.nio.file.Files.readAllBytes(java.nio.file.Path.of(args[1]));
-                  long image = SleuthkitJNI.openImage(new String[] {args[0]});
-                  byte[] actual = new byte[expected.length];
-                  int count = SleuthkitJNI.readImg(image, actual, 0, actual.length);
-                  if (count != expected.length || !java.util.Arrays.equals(expected, actual)) {
-                      throw new IllegalStateException("Packaged JNI FTL100 autodetection/recovery mismatch");
+                  java.nio.file.Path caseDir = java.nio.file.Files.createTempDirectory("ftl100-jni-case-");
+                  SleuthkitCase skCase = SleuthkitCase.newCase(caseDir.resolve("autopsy.db").toString());
+                  try {
+                      long image = SleuthkitJNI.openImage(new String[] {args[0]}, skCase);
+                      byte[] actual = new byte[expected.length];
+                      int count = SleuthkitJNI.readImg(image, actual, 0, actual.length);
+                      if (count != expected.length || !java.util.Arrays.equals(expected, actual)) {
+                          throw new IllegalStateException("Packaged JNI FTL100 autodetection/recovery mismatch");
+                      }
+                      System.out.println("Packaged JNI: late-header FTL100 autodetection and complete logical image verified");
+                  } finally {
+                      skCase.close();
                   }
-                  System.out.println("Packaged JNI: late-header FTL100 autodetection and complete logical image verified");
               }
           }
           '@ | Set-Content -Path $src -Encoding utf8
