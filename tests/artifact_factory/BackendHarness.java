@@ -9,6 +9,7 @@ import java.util.List;
 public final class BackendHarness {
     public static void main(String[] args) throws Exception {
         JsonObject request=new Gson().fromJson(Files.readString(Path.of(args[2]),StandardCharsets.UTF_8),JsonObject.class);
-        System.out.println(ArtifactFactoryBackend.run(List.of(args[0]),Path.of(args[1]),request));
+        System.out.write((ArtifactFactoryBackend.run(List.of(args[0]),Path.of(args[1]),request).toString() + "\n").getBytes(StandardCharsets.UTF_8));
+        System.out.flush();
     }
 }
