@@ -2,7 +2,7 @@ name: Autopsy QNXProbe fresh Windows build
 
 on:
   push:
-    branches: [develop, feature/nand-preprocessor-gui, feature/artifact-wizard-cleaner, feature/dlt-geotime-carving]
+    branches: [develop, feature/nand-preprocessor-gui, feature/artifact-wizard-cleaner, feature/dlt-geotime-carving, feature/mergefiles-input]
     paths:
       - '.github/workflows/autopsy-qnxprobe-fresh.yml'
       - 'Core/src/org/sleuthkit/autopsy/casemodule/**'
@@ -18,6 +18,8 @@ on:
       - 'Core/src/org/sleuthkit/autopsy/report/infrastructure/ReportWizardAction.java'
       - 'Tools/artifact_factory/**'
       - 'tests/artifact_factory/**'
+      - 'tests/mergefiles/**'
+      - 'Tools/mergefiles/**'
   workflow_dispatch:
 
 permissions:
@@ -51,6 +53,11 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.10'
+      - name: Test MergeFiles against supplied Python reference
+        shell: pwsh
+        run: |
+          python tests/mergefiles/test_mergefiles.py
+          if ($LASTEXITCODE -ne 0) { throw 'MergeFiles parity, preview or cancellation test failed' }
       - name: Test Artifact Wizard and transactional cleaner
         shell: pwsh
         run: |
@@ -470,7 +477,7 @@ jobs:
           path: dist/autopsy-qnxprobe-windows.zip
           if-no-files-found: error
       - name: Publish QNXProbe Windows release
-        if: github.ref == 'refs/heads/develop' || github.ref == 'refs/heads/feature/artifact-wizard-cleaner' || github.ref == 'refs/heads/feature/dlt-geotime-carving'
+        if: github.ref == 'refs/heads/develop' || github.ref == 'refs/heads/feature/artifact-wizard-cleaner' || github.ref == 'refs/heads/feature/dlt-geotime-carving' || github.ref == 'refs/heads/feature/mergefiles-input'
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
@@ -483,6 +490,10 @@ jobs:
           if ('${{ github.ref }}' -eq 'refs/heads/feature/dlt-geotime-carving') {
             $tag = "autopsy-dlt-geotime-win-${{ github.run_number }}"
             $featureNotes = "`n`nIncludes DLT v1 table/wizard viewer, GeoTime Carving using the Geolocation map, direct case/file/folder preprocessing inputs and plugin-folder Python/Perl/EXE lookup. NAND preprocessing uses .img for generic output and .ubi only for a CRC-valid UBI EC header at image start. Includes Artifact Wizard and offline Blackboard Data Artifact cleanup with backup."
+          }
+          if ('${{ github.ref }}' -eq 'refs/heads/feature/mergefiles-input') {
+            $tag = "autopsy-mergefiles-win-${{ github.run_number }}"
+            $featureNotes = "`n`nIncludes native MergeFiles in the Add Data Source image input dialog: configurable block interleaving and duplicate ordering, per-block byte reversal, synchronized hex/ASCII preview, cancellation with temporary output, and explicit use of the resulting image. Based on the supplied merge_files.py port of Jens Elstner's mergeFiles 0.3.3. Includes all develop DLT/GeoTime, Artifact Wizard and NAND features."
           }
           $zip = 'dist/autopsy-qnxprobe-windows.zip'
           if (-not (Test-Path $zip)) { throw "Missing release ZIP: $zip" }

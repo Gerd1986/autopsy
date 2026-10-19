@@ -49,6 +49,8 @@ def main():
         assert carved['count']==1 and len(carved['exports'])==3
         core=dist/'autopsy/modules/org-sleuthkit-autopsy-core.jar'
         with zipfile.ZipFile(core) as jar:
+            assert 'org/sleuthkit/autopsy/casemodule/MergeFilesDialog.class' in jar.namelist()
+            assert 'org/sleuthkit/autopsy/casemodule/MergeFiles.class' in jar.namelist()
             assert 'org/sleuthkit/autopsy/contentviewers/DltContentViewer.class' in jar.namelist()
             assert 'org/sleuthkit/autopsy/geolocation/GeoTimeCarvingAction.class' in jar.namelist()
             service=jar.read('META-INF/services/org.sleuthkit.autopsy.corecomponentinterfaces.DataContentViewer').decode('utf8')
