@@ -2,13 +2,17 @@ name: Autopsy QNXProbe fresh Windows build
 
 on:
   push:
-    branches: [develop, feature/nand-preprocessor-gui]
+    branches: [develop, feature/nand-preprocessor-gui, feature/artifact-wizard-cleaner]
     paths:
       - '.github/workflows/autopsy-qnxprobe-fresh.yml'
       - 'Core/src/org/sleuthkit/autopsy/casemodule/**'
       - 'Core/build.xml'
       - 'Tools/nand/**'
       - 'tests/nand/**'
+      - 'Core/src/org/sleuthkit/autopsy/artifactfactory/**'
+      - 'Core/src/org/sleuthkit/autopsy/report/infrastructure/ReportWizardAction.java'
+      - 'Tools/artifact_factory/**'
+      - 'tests/artifact_factory/**'
   workflow_dispatch:
 
 permissions:
@@ -42,6 +46,11 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.10'
+      - name: Test Artifact Wizard and transactional cleaner
+        shell: pwsh
+        run: |
+          python tests/artifact_factory/test_backend.py
+          if ($LASTEXITCODE -ne 0) { throw 'Artifact Wizard/cleaner backend tests failed' }
       - name: Install tools
         shell: pwsh
         run: |
@@ -354,6 +363,17 @@ jobs:
           if ($LASTEXITCODE -ne 0 -or -not ($entries -contains 'NATIVELIBS/amd64/win/libtsk_jni.dll')) { throw 'Packaged JAR missing Windows JNI' }
           Compress-Archive -Path $dirs[0].FullName -DestinationPath dist/autopsy-qnxprobe-windows.zip -Force
           if (-not (Test-Path dist/autopsy-qnxprobe-windows.zip)) { throw 'Distribution ZIP missing' }
+      - name: Validate packaged Artifact Wizard and real-case cleaner
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $dir = @(Get-ChildItem dist -Directory -Filter 'autopsy-*')[0].FullName
+          $jython = Join-Path $dir 'autopsy/modules/ext/jython-standalone-2.7.4.jar'
+          if (-not (Test-Path $jython)) { throw 'Packaged Jython runtime missing' }
+          python tests/artifact_factory/test_backend.py --jython $jython
+          if ($LASTEXITCODE -ne 0) { throw 'Generated Jython parser validation failed' }
+          python tests/artifact_factory/test_packaged.py $dir
+          if ($LASTEXITCODE -ne 0) { throw 'Packaged Artifact Wizard bridge or native-case cleaner failed' }
       - name: Smoke-test packaged Sleuth Kit JNI
         shell: pwsh
         run: |
