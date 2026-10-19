@@ -53,3 +53,20 @@ and exercises actual preprocessing, ECC correction, failure, cancellation,
 report/config preservation, paths with spaces and distinct export directories.
 The fresh Windows workflow builds the complete Autopsy GUI and smoke-tests the
 packaged runtime and launcher.
+
+## LBA mapping profiles
+
+The bundled preprocessor also accepts the optional mapping fields from Sleuth Kit
+`develop-4.1x`. Selecting a mapping config corrects BCH first, then reconstructs
+logical sector order before registering the exported image. `clean.ubi` is the
+legacy export filename; its content may also be FAT32 or another filesystem.
+The native filesystem parser detects content rather than relying on the suffix.
+
+`synthetic-lba-bch-fat32.json` is a test-only profile for the published synthetic
+NAND fixture. Do not use it as a guessed real-device profile. Field documentation
+is included in `Tools/nand/NAND_LBA_MAPPING.md`. Without a selected config the
+preprocessor is still bypassed.
+
+The Windows release workflow tests both the source scripts and the installed
+Python runtime through the production Java bridge, compares the exported FAT32
+image byte-for-byte and verifies native fsstat/fls/icat file payload hashes.

@@ -54,7 +54,7 @@ jobs:
         run: |
           git clone --depth 1 --branch develop-4.1x https://github.com/Gerd1986/sleuthkit.git "$env:TSK_HOME"
           if ($LASTEXITCODE -ne 0) { throw 'Sleuth Kit checkout failed' }
-          $expected = 'f4bf2eacfecc772ce2b1905080c5a86eb81df8df'
+          $expected = '1aa1543e80985ea1691f3b9204b13d0d60e4581a'
           git -C "$env:TSK_HOME" fetch --depth 1 origin $expected
           if ($LASTEXITCODE -ne 0) { throw 'Pinned Sleuth Kit fetch failed' }
           git -C "$env:TSK_HOME" checkout --detach $expected
@@ -274,11 +274,22 @@ jobs:
               Write-Host "Restored $dest"
             }
           }
+      - name: Verify bundled NAND tools match pinned Sleuth Kit
+        shell: pwsh
+        run: |
+          foreach ($file in @('preprocess_ubi.py','nand_lba.py','bch.py')) {
+            if ((Get-FileHash "Tools/nand/$file" -Algorithm SHA256).Hash -ne (Get-FileHash "$env:TSK_HOME/tools/flash/$file" -Algorithm SHA256).Hash) { throw "Bundled NAND source mismatch: $file" }
+          }
+          foreach ($file in @('qualcomm-kommbox-4352.json','synthetic-lba-bch-fat32.json')) {
+            if ((Get-FileHash "Tools/nand/profiles/$file" -Algorithm SHA256).Hash -ne (Get-FileHash "$env:TSK_HOME/config/flash_devices/$file" -Algorithm SHA256).Hash) { throw "Bundled NAND profile mismatch: $file" }
+          }
       - name: Test NAND preprocessing bridge
         shell: pwsh
         run: |
           python tests/nand/test_bridge.py
           if ($LASTEXITCODE -ne 0) { throw 'NAND preprocessing bridge tests failed' }
+          python tests/nand/test_lba_bridge.py --sleuthkit "$env:TSK_HOME" --fixture "$env:RUNNER_TEMP/nand-lba-fixture" --native
+          if ($LASTEXITCODE -ne 0) { throw 'NAND LBA bridge and native FAT32 tests failed' }
       - name: Bundle isolated Python runtime for NAND preprocessing
         shell: pwsh
         run: |
@@ -333,6 +344,8 @@ jobs:
           if (-not (Test-Path "$nand/profiles/qualcomm-kommbox-4352.json")) { throw 'Packaged NAND profile missing' }
           & "$nand/python/python.exe" "$nand/preprocess_ubi.py" --list-profiles
           if ($LASTEXITCODE -ne 0) { throw 'Packaged NAND preprocessor failed' }
+          python tests/nand/test_lba_bridge.py --sleuthkit "$env:TSK_HOME" --fixture "$env:RUNNER_TEMP/nand-lba-fixture" --script "$nand/preprocess_ubi.py" --profile "$nand/profiles/synthetic-lba-bch-fat32.json" --python "$nand/python/python.exe" --native
+          if ($LASTEXITCODE -ne 0) { throw 'Packaged isolated Python NAND LBA/FAT32 bridge test failed' }
           $targetJar = $target[0].FullName
           Write-Host "Replacing $targetJar"
           Copy-Item -LiteralPath $env:CUSTOM_TSK_JAR -Destination $targetJar -Force
@@ -432,6 +445,6 @@ jobs:
           $zip = 'dist/autopsy-qnxprobe-windows.zip'
           if (-not (Test-Path $zip)) { throw "Missing release ZIP: $zip" }
           $hash = (Get-FileHash $zip -Algorithm SHA256).Hash
-          $notes = "Unsigned Windows test build of Autopsy with custom QNXProbe Sleuth Kit 4.15.0 JNI JAR.`n`nCommit: ${{ github.sha }}`nSleuth Kit: $env:CUSTOM_TSK_REVISION (develop-4.1x; QNX6, QNX4, F2FS, OS-9 RBF, EFS, UBI/UBIFS, Datalight/Reliance, FTL100 full-dump autodetection; optional GUI NAND preprocessing with bundled Python)`nSHA256: $hash`n`nCase-UCO JAR is preserved."
+          $notes = "Unsigned Windows test build of Autopsy with custom QNXProbe Sleuth Kit 4.15.0 JNI JAR.`n`nCommit: ${{ github.sha }}`nSleuth Kit: $env:CUSTOM_TSK_REVISION (develop-4.1x; QNX6, QNX4, F2FS, OS-9 RBF, EFS, UBI/UBIFS, Datalight/Reliance, FTL100 full-dump autodetection; optional GUI NAND preprocessing with BCH, LBA mapping and bundled Python)`nSHA256: $hash`n`nCase-UCO JAR is preserved."
           gh release create $tag $zip --repo "${{ github.repository }}" --target "${{ github.sha }}" --title "Autopsy QNXProbe Windows $tag" --notes $notes --prerelease
           if ($LASTEXITCODE -ne 0) { throw 'GitHub release publishing failed' }
