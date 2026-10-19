@@ -30,6 +30,7 @@ def _typed(payload, endian, count):
         variable=bool(info&0x800)
         name=''
         if info&0x200: # string length precedes optional variable name
+            if info&0x38000 not in (0,0x8000): raise ValueError('unsupported string encoding')
             size=number('H')
             if variable:
                 name=take(number('H')).rstrip(b'\0').decode('utf-8','replace')

@@ -47,6 +47,7 @@ def main():
         req={'action':'preview','meta':{'path':str(path),'source_type':'dlt'},'plugin_type':'Event','mapping':{'Timestamp':'timestamp_iso_utc','Eventname':'apid','Kommentar':'payload'}}
         assert factory.dispatch(req)['rows'][0]['payload']=='Müller -42'
         assert factory.dispatch({**req,'action':'test'})['rows'][0]['timestamp_epoch']==1792404000
+        assert factory.dispatch({**req,'action':'test','mapping':{'Timestamp':'unix_seconds','Eventname':'apid'}})['rows'][0]['timestamp_epoch']==1792404000
         template=factory.dispatch({**req,'action':'template','filename':'%.dlt','module_name':'DLT Event'})['code'];compile(template,'DLT.py','exec')
         if args.jython:
             module=work/'DLT.py';module.write_text(template,encoding='utf8')

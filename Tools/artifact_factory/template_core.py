@@ -49,9 +49,9 @@ def _timestamp_to_epoch_and_str(val):
     s = str(val).strip()
     if not s:
         return (None, None)
-    if re.match(r"^\d+$", s):
+    if re.match(r"^[+-]?\d+(?:\.\d+)?$", s):
         try:
-            num = int(s)
+            num = float(s) if "." in s else int(s)
             if num > 1000000000000:
                 num //= 1000
             dt = datetime.datetime.utcfromtimestamp(num)
