@@ -103,7 +103,7 @@ def test_parser(work,jython=None):
     fails(lambda:factory.dispatch({**base,'action':'export_csv','output':str(csv)}),'differ')
     assert csv.read_bytes()==original
     # Multiline named groups and Unicode survive the native JSON request path.
-    text=work/'multi.txt';text.write_text('name=Müller\nlat=51.5\nname=Other\nlat=52.5\n')
+    text=work/'multi.txt';text.write_text('name=Müller\nlat=51.5\nname=Other\nlat=52.5\n',encoding='utf-8')
     req={'action':'preview','meta':{'path':str(text),'source_type':'regex','regex':r'(?m)name=(?P<name>[^\n]+)\nlat=(?P<lat>[\d.]+)'},'plugin_type':'Geo-Track','mapping':{}}
     assert len(factory.dispatch(req)['rows'])==2
     # Committed WAL rows are included, SQL preview is read-only.
@@ -124,11 +124,11 @@ def test_parser(work,jython=None):
     # Actual Jython parser, not merely CPython compilation, for generated CSV/regex.
     if jython:
         test=work/'jython_runtime.py'
-        suffix='''\nrows=parse_rows({"path":%r,"source_type":"csv","sep":";"},{"Timestamp":"ts","Latitude":"lat","Longitude":"lon"},"Geo-Track")
+        suffix='''\nrows=parse_rows({"path":u%r,"source_type":"csv","sep":";"},{"Timestamp":"ts","Latitude":"lat","Longitude":"lon"},"Geo-Track")
 assert rows[0]["latitude"]==51.85
-rows=parse_rows({"path":%r,"source_type":"csv","sep":";"},{"Vorname":"name"},"Mobile")
+rows=parse_rows({"path":u%r,"source_type":"csv","sep":";"},{"Vorname":"name"},"Mobile")
 assert rows[0]["firstname"]==u"M\\u00fcller"
-rows=parse_rows({"path":%r,"source_type":"regex","regex":%r},{"Kommentar":"name","Latitude":"lat"},"Geo-Bookmark")
+rows=parse_rows({"path":u%r,"source_type":"regex","regex":%r},{"Kommentar":"name","Latitude":"lat"},"Geo-Bookmark")
 assert len(rows)==2 and rows[0]["remark"]==u"M\\u00fcller"
 print("PASS: actual Jython CSV Unicode and multiline Regex parsing")
 '''%(str(csv),str(csv),str(text),r'(?m)name=(?P<name>[^\n]+)\nlat=(?P<lat>[\d.]+)')

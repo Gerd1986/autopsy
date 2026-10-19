@@ -107,7 +107,7 @@ def rows(meta, directory, limit=None, schema=None):
             if len(set(columns)) != len(columns):
                 raise ValueError('Use unique SQL column aliases')
             for row in itertools.islice(cursor, limit):
-                yield dict(zip(columns, row))
+                yield dict(zip(columns, ["0x"+v.hex() if isinstance(v, bytes) else v for v in row]))
     elif kind == 'regex':
         pattern = re.compile(meta.get('regex', ''))
         if not pattern.groupindex:
