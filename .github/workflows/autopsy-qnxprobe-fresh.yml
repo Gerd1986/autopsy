@@ -470,7 +470,7 @@ jobs:
           path: dist/autopsy-qnxprobe-windows.zip
           if-no-files-found: error
       - name: Publish QNXProbe Windows release
-        if: github.ref == 'refs/heads/develop' || github.ref == 'refs/heads/feature/artifact-wizard-cleaner'
+        if: github.ref == 'refs/heads/develop' || github.ref == 'refs/heads/feature/artifact-wizard-cleaner' || github.ref == 'refs/heads/feature/dlt-geotime-carving'
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
@@ -479,6 +479,10 @@ jobs:
           if ('${{ github.ref }}' -eq 'refs/heads/feature/artifact-wizard-cleaner') {
             $tag = "autopsy-artifact-wizard-win-${{ github.run_number }}"
             $featureNotes = "`n`nIncludes Artifact Wizard next to Discovery (CSV, SQLite, Regex, preprocessing, parser export) and offline Blackboard Data Artifact cleanup with backup. Analysis Results are preserved."
+          }
+          if ('${{ github.ref }}' -eq 'refs/heads/feature/dlt-geotime-carving') {
+            $tag = "autopsy-dlt-geotime-win-${{ github.run_number }}"
+            $featureNotes = "`n`nIncludes DLT v1 table/wizard viewer, GeoTime Carving using the Geolocation map, direct case/file/folder preprocessing inputs and plugin-folder Python/Perl/EXE lookup. NAND preprocessing uses .img for generic output and .ubi only for a CRC-valid UBI EC header at image start. Includes Artifact Wizard and offline Blackboard Data Artifact cleanup with backup."
           }
           $zip = 'dist/autopsy-qnxprobe-windows.zip'
           if (-not (Test-Path $zip)) { throw "Missing release ZIP: $zip" }

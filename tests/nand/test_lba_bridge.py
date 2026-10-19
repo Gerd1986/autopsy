@@ -42,11 +42,13 @@ def main():
             str(temp/'case exports'), str(args.script), args.python, 'normal'],
             check=True, capture_output=True, text=True, timeout=120)
         output = Path(result.stdout.strip())
+        assert output.suffix == '.img'
         assert output.parent.parent == temp/'case exports/nand-preprocessed'
         assert hashlib.sha256(output.read_bytes()).hexdigest() == expected['reference_sha256']
         assert output.read_bytes() == (fixture/'expected-fat32.img').read_bytes()
         assert (output.parent/'device-profile.json').read_bytes() == args.profile.read_bytes()
         report = json.loads(Path(str(output)+'.report.json').read_text())
+        assert report['output'] == str(output.absolute())
         assert report['status'] == 'completed' and report['corrected_bits'] == 6
         assert report['duplicate_pages'] == 2 and report['erased_pages'] == 2
         assert report['lba_mapping']['selected_pages'] == expected['selected_pages']

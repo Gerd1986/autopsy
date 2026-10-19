@@ -192,3 +192,14 @@ argument quoting and real generated-parser execution. `CaseInputStagingTest`
 uses a real native SleuthkitCase to validate file/folder copying, WAL/SHM, source
 preservation and cleanup. The packaged toolbar-order test uses the actual
 registered Timeline action ID (`timeline.Timeline`).
+
+### NAND output naming in this branch
+
+The optional NAND preprocessing bridge starts with `clean.img`. It keeps the
+generic `.img` suffix for FAT images, whole-flash images and unknown content.
+Only an image starting with a UBI v1 erase-counter header with valid offsets,
+zero padding and a correct CRC is named `clean.ubi`. A UBI partition embedded
+later in a raw flash image does not change its container extension. The image
+bytes and hashes are unaffected; the sibling `.report.json` filename and its
+`output` field follow the final name. Rename decisions are appended to the log.
+The standalone vendored NAND scripts and device profiles are unchanged.
