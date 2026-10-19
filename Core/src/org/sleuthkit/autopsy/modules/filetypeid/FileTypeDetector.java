@@ -228,7 +228,12 @@ public class FileTypeDetector {
          * custom file types defined by Autopsy.
          */
         if (null == mimeType) {
-            mimeType = detectAutopsyDefinedType(file, buf, bufLen);
+            if (bufLen >= 4 && buf[0] == 'D' && buf[1] == 'L'
+                    && ((buf[2] == 'T' && (buf[3] == 1 || buf[3] == 2)) || (buf[2] == 'S' && buf[3] == 1))) {
+                mimeType = "application/x-dlt";
+            } else {
+                mimeType = detectAutopsyDefinedType(file, buf, bufLen);
+            }
         }
 
         /*

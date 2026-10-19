@@ -134,6 +134,7 @@ import org.sleuthkit.autopsy.events.AutopsyEvent;
 import org.sleuthkit.autopsy.events.AutopsyEventException;
 import org.sleuthkit.autopsy.events.AutopsyEventPublisher;
 import org.sleuthkit.autopsy.discovery.ui.OpenDiscoveryAction;
+import org.sleuthkit.autopsy.artifactfactory.ArtifactWizardAction;
 import org.sleuthkit.autopsy.ingest.IngestJob;
 import org.sleuthkit.autopsy.ingest.IngestManager;
 import org.sleuthkit.autopsy.keywordsearchservice.KeywordSearchService;
@@ -1354,6 +1355,7 @@ public class Case {
         CallableSystemAction.get(CommonAttributeSearchAction.class).setEnabled(true);
         CallableSystemAction.get(OpenOutputFolderAction.class).setEnabled(false);
         CallableSystemAction.get(OpenDiscoveryAction.class).setEnabled(true);
+        CallableSystemAction.get(ArtifactWizardAction.class).setEnabled(true);
 
         /*
          * Add the case to the recent cases tracker that supplies a list of
@@ -1416,6 +1418,7 @@ public class Case {
                 CallableSystemAction.get(OpenOutputFolderAction.class).setEnabled(false);
                 CallableSystemAction.get(CommonAttributeSearchAction.class).setEnabled(false);
                 CallableSystemAction.get(OpenDiscoveryAction.class).setEnabled(false);
+                CallableSystemAction.get(ArtifactWizardAction.class).setEnabled(false);
 
                 /*
                  * Clear the notifications in the notfier component in the lower

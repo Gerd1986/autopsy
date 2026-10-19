@@ -35,6 +35,9 @@
         <copy todir="${basedir}/release/nand">
             <fileset dir="${basedir}/../Tools/nand" excludes=".gitignore,**/__pycache__/**,**/*.pyc"/>
         </copy>
+        <copy todir="${basedir}/release/artifact_factory">
+            <fileset dir="${basedir}/../Tools/artifact_factory" excludes="**/__pycache__/**,**/*.pyc"/>
+        </copy>
         <!--
             Copy netbeans localization jars: 
             This contains jars provided in Netbeans 8 RCP that provide localization bundles.  

@@ -2,13 +2,22 @@ name: Autopsy QNXProbe fresh Windows build
 
 on:
   push:
-    branches: [develop, feature/nand-preprocessor-gui]
+    branches: [develop, feature/nand-preprocessor-gui, feature/artifact-wizard-cleaner, feature/dlt-geotime-carving]
     paths:
       - '.github/workflows/autopsy-qnxprobe-fresh.yml'
       - 'Core/src/org/sleuthkit/autopsy/casemodule/**'
       - 'Core/build.xml'
       - 'Tools/nand/**'
       - 'tests/nand/**'
+      - 'Core/src/org/sleuthkit/autopsy/artifactfactory/**'
+      - 'Core/src/org/sleuthkit/autopsy/geolocation/**'
+      - 'Core/src/org/sleuthkit/autopsy/contentviewers/DltContentViewer.java'
+      - 'Core/src/org/sleuthkit/autopsy/modules/filetypeid/FileTypeDetector.java'
+      - 'Core/src/org/sleuthkit/autopsy/discovery/ui/OpenDiscoveryAction.java'
+      - 'Core/src/org/sleuthkit/autopsy/timeline/OpenTimelineAction.java'
+      - 'Core/src/org/sleuthkit/autopsy/report/infrastructure/ReportWizardAction.java'
+      - 'Tools/artifact_factory/**'
+      - 'tests/artifact_factory/**'
   workflow_dispatch:
 
 permissions:
@@ -42,6 +51,15 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.10'
+      - name: Test Artifact Wizard and transactional cleaner
+        shell: pwsh
+        run: |
+          python tests/artifact_factory/test_backend.py
+          if ($LASTEXITCODE -ne 0) { throw 'Artifact backend validation failed' }
+          python tests/artifact_factory/test_dlt_geotime.py
+          if ($LASTEXITCODE -ne 0) { throw 'DLT/GeoTime validation failed' }
+          python tests/artifact_factory/test_preprocessing.py
+          if ($LASTEXITCODE -ne 0) { throw 'Artifact Wizard/cleaner backend tests failed' }
       - name: Install tools
         shell: pwsh
         run: |
@@ -354,6 +372,21 @@ jobs:
           if ($LASTEXITCODE -ne 0 -or -not ($entries -contains 'NATIVELIBS/amd64/win/libtsk_jni.dll')) { throw 'Packaged JAR missing Windows JNI' }
           Compress-Archive -Path $dirs[0].FullName -DestinationPath dist/autopsy-qnxprobe-windows.zip -Force
           if (-not (Test-Path dist/autopsy-qnxprobe-windows.zip)) { throw 'Distribution ZIP missing' }
+      - name: Validate packaged Artifact Wizard and real-case cleaner
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $dir = @(Get-ChildItem dist -Directory -Filter 'autopsy-*')[0].FullName
+          $jython = Join-Path $dir 'autopsy/modules/ext/jython-standalone-2.7.4.jar'
+          if (-not (Test-Path $jython)) { throw 'Packaged Jython runtime missing' }
+          python tests/artifact_factory/test_backend.py --jython $jython
+          if ($LASTEXITCODE -ne 0) { throw 'Generated Jython parser validation failed' }
+          python tests/artifact_factory/test_dlt_geotime.py --jython $jython
+          if ($LASTEXITCODE -ne 0) { throw 'DLT and GeoTime parser validation failed' }
+          python tests/artifact_factory/test_preprocessing.py --jython $jython
+          if ($LASTEXITCODE -ne 0) { throw 'Preprocessing folder/resolution validation failed' }
+          python tests/artifact_factory/test_packaged.py $dir
+          if ($LASTEXITCODE -ne 0) { throw 'Packaged Artifact Wizard bridge or native-case cleaner failed' }
       - name: Smoke-test packaged Sleuth Kit JNI
         shell: pwsh
         run: |
@@ -437,14 +470,24 @@ jobs:
           path: dist/autopsy-qnxprobe-windows.zip
           if-no-files-found: error
       - name: Publish QNXProbe Windows release
-        if: github.ref == 'refs/heads/develop'
+        if: github.ref == 'refs/heads/develop' || github.ref == 'refs/heads/feature/artifact-wizard-cleaner' || github.ref == 'refs/heads/feature/dlt-geotime-carving'
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
           $tag = "autopsy-qnxprobe-win-${{ github.run_number }}"
+          $featureNotes = ''
+          if ('${{ github.ref }}' -eq 'refs/heads/feature/artifact-wizard-cleaner') {
+            $tag = "autopsy-artifact-wizard-win-${{ github.run_number }}"
+            $featureNotes = "`n`nIncludes Artifact Wizard next to Discovery (CSV, SQLite, Regex, preprocessing, parser export) and offline Blackboard Data Artifact cleanup with backup. Analysis Results are preserved."
+          }
+          if ('${{ github.ref }}' -eq 'refs/heads/feature/dlt-geotime-carving') {
+            $tag = "autopsy-dlt-geotime-win-${{ github.run_number }}"
+            $featureNotes = "`n`nIncludes DLT v1 table/wizard viewer, GeoTime Carving using the Geolocation map, direct case/file/folder preprocessing inputs and plugin-folder Python/Perl/EXE lookup. NAND preprocessing uses .img for generic output and .ubi only for a CRC-valid UBI EC header at image start. Includes Artifact Wizard and offline Blackboard Data Artifact cleanup with backup."
+          }
           $zip = 'dist/autopsy-qnxprobe-windows.zip'
           if (-not (Test-Path $zip)) { throw "Missing release ZIP: $zip" }
           $hash = (Get-FileHash $zip -Algorithm SHA256).Hash
           $notes = "Unsigned Windows test build of Autopsy with custom QNXProbe Sleuth Kit 4.15.0 JNI JAR.`n`nCommit: ${{ github.sha }}`nSleuth Kit: $env:CUSTOM_TSK_REVISION (develop-4.1x; QNX6, QNX4, F2FS, OS-9 RBF, EFS, UBI/UBIFS, Datalight/Reliance, FTL100 full-dump autodetection; optional GUI NAND preprocessing with BCH, LBA mapping and bundled Python)`nSHA256: $hash`n`nCase-UCO JAR is preserved."
+          $notes += $featureNotes
           gh release create $tag $zip --repo "${{ github.repository }}" --target "${{ github.sha }}" --title "Autopsy QNXProbe Windows $tag" --notes $notes --prerelease
           if ($LASTEXITCODE -ne 0) { throw 'GitHub release publishing failed' }
