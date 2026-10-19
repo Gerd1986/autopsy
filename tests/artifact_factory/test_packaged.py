@@ -2,6 +2,8 @@
 """Verify the packaged Java/Python bridge and offline cleanup on a real TSK case."""
 import argparse
 import hashlib
+import struct
+import zipfile
 import json
 import os
 from pathlib import Path
@@ -19,7 +21,7 @@ def main():
     dist=args.distribution.resolve();ext=dist/'autopsy/modules/ext'
     factory=dist/'autopsy/artifact_factory';python=dist/'autopsy/nand/python/python.exe'
     java=dist/'jre/bin/java.exe';java=str(java if java.is_file() else 'java')
-    for name in ('factory.py','template_core.py','cleaner.py'):
+    for name in ('factory.py','template_core.py','cleaner.py','dlt.py','geotime.py','geotime_core.py'):
         assert (factory/name).read_bytes()==(ROOT/'Tools/artifact_factory'/name).read_bytes()
     modules=[ext,dist/'autopsy/modules',dist/'platform/lib',dist/'platform/modules',dist/'platform/core']
     cp=os.pathsep.join(str(p/'*') for p in modules)
@@ -37,6 +39,28 @@ def main():
         sample=work/'preview.csv';sample.write_text('name,phone\nMüller,+49123\n',encoding='utf-8')
         req={'action':'test','meta':{'path':str(sample),'source_type':'csv','sep':','},'mapping':{'Vorname':'name','Telefonnummer':'phone'},'plugin_type':'Mobile'}
         assert run('factory.py',req)['rows'][0]['firstname']=='Müller'
+        from test_dlt_geotime import message
+        trace=work/'trace.dlt';trace.write_bytes(message())
+        decoded=run('factory.py',{'action':'preview','meta':{'path':str(trace),'source_type':'dlt'}})
+        assert decoded['rows'][0]['payload']=='Müller -42'
+        binary=work/'geo.bin';binary.write_bytes(struct.pack('<dd',7.2,51.8))
+        carved=run('geotime.py',{'path':str(binary),'mode':'geo','format':'raw_float64_le','step':16,'output_directory':str(work/'exports')})
+        assert carved['count']==1 and len(carved['exports'])==3
+        core=dist/'autopsy/modules/org-sleuthkit-autopsy-core.jar'
+        with zipfile.ZipFile(core) as jar:
+            assert 'org/sleuthkit/autopsy/contentviewers/DltContentViewer.class' in jar.namelist()
+            assert 'org/sleuthkit/autopsy/geolocation/GeoTimeCarvingAction.class' in jar.namelist()
+            service=jar.read('META-INF/services/org.sleuthkit.autopsy.corecomponentinterfaces.DataContentViewer').decode('utf8')
+            assert 'org.sleuthkit.autopsy.contentviewers.DltContentViewer' in service
+            import xml.etree.ElementTree as ET
+            layer=ET.fromstring(jar.read('META-INF/generated-layer.xml'))
+            toolbar=layer.find("./folder[@name='Toolbars']/folder[@name='Case']")
+            positions={}
+            for entry in toolbar.findall('file'):
+                attr=entry.find("attr[@name='position']")
+                if attr is not None: positions[entry.attrib['name']]=int(attr.attrib['intvalue'])
+            def position(name): return next(v for k,v in positions.items() if name in k)
+            assert position('OpenGeolocationAction')<position('GeoTimeCarvingAction')<position('OpenTimelineAction')<position('OpenDiscoveryAction')<position('ArtifactWizardAction')<position('ReportWizardAction')
         db=work/'autopsy.db'
         subprocess.run([java,'-cp',runtime_cp,'NativeCaseFixture','create',str(db)],check=True,env=env)
         with closing(sqlite3.connect(db)) as c:

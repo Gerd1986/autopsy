@@ -39,8 +39,8 @@ import org.sleuthkit.autopsy.coreutils.ThreadConfined;
  */
 @ActionID(category = "Tools", id = "org.sleuthkit.autopsy.newpackage.OpenDiscoveryAction")
 @ActionReferences(value = {
-    @ActionReference(path = "Menu/Tools", position = 105),
-    @ActionReference(path = "Toolbars/Case", position = 105)})
+    @ActionReference(path = "Menu/Tools", position = 106),
+    @ActionReference(path = "Toolbars/Case", position = 106)})
 @ActionRegistration(displayName = "#CTL_OpenDiscoveryAction", lazy = false)
 @NbBundle.Messages({"CTL_OpenDiscoveryAction=Discovery"})
 public final class OpenDiscoveryAction extends CallableSystemAction implements Presenter.Toolbar {

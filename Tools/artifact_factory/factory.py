@@ -15,6 +15,7 @@ import subprocess
 import sys
 import tempfile
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+from dlt import iter_dlt, DLT_COLUMNS
 from template_core import EMBEDDED_PARSER_BLOCK, build_autopsy_template
 
 FIELDS = {
@@ -56,7 +57,11 @@ def pipeline(meta, directory):
         if not isinstance(suffix, str) or not re.fullmatch(r'\.[A-Za-z0-9_.-]{1,32}', suffix):
             raise ValueError('Invalid preprocessing output suffix')
         output = Path(directory)/('step-%d'%index+suffix)
-        command = step['command'].replace('{input}', str(current)).replace('{output}', str(output)).replace('{script_dir}', str(Path(meta['path']).resolve().parent))
+        inputs = [str(Path(p).resolve()) for p in meta.get('preprocess_inputs', [])]
+        joined = subprocess.list2cmdline(inputs) if os.name == 'nt' else ' '.join(shlex.quote(p) for p in inputs)
+        command = step['command'].replace('{inputs}', joined)
+        for number, value in enumerate(inputs, 1): command = command.replace('{input%d}'%number, value)
+        command = command.replace('{input}', str(current)).replace('{output}', str(output)).replace('{script_dir}', str(Path(meta['path']).resolve().parent))
         shell = step.get('shell', False)
         if type(shell) is not bool:
             raise ValueError('shell must be true or false')
@@ -108,6 +113,9 @@ def rows(meta, directory, limit=None, schema=None):
                 raise ValueError('Use unique SQL column aliases')
             for row in itertools.islice(cursor, limit):
                 yield dict(zip(columns, ["0x"+v.hex() if isinstance(v, bytes) else v for v in row]))
+    elif kind == 'dlt':
+        if schema is not None: schema.extend(DLT_COLUMNS)
+        yield from iter_dlt(str(path), limit=limit)
     elif kind == 'regex':
         pattern = re.compile(meta.get('regex', ''))
         if not pattern.groupindex:
@@ -117,7 +125,7 @@ def rows(meta, directory, limit=None, schema=None):
         for match in itertools.islice(pattern.finditer(text), limit):
             yield match.groupdict()
     else:
-        raise ValueError('Select CSV, SQLite or Regex')
+        raise ValueError('Select CSV, SQLite, Regex or DLT')
 
 
 def normalize(input_rows, mapping, kind):
@@ -147,6 +155,10 @@ def dispatch(request):
     action = request.get('action')
     meta, kind, mapping = validate(request)
     with tempfile.TemporaryDirectory(prefix='artifact-wizard-') as td:
+        if action == 'dlt_page':
+            stats = {}
+            records = list(iter_dlt(str(pipeline(meta, td)), start=int(request.get('offset', 0)), limit=500, stats=stats))
+            return {'columns':DLT_COLUMNS, 'rows':records, **stats}
         if action == 'tables':
             with closing(readonly(snapshot(pipeline(meta, td), td))) as connection:
                 return {'tables':[r[0] for r in connection.execute("SELECT name FROM sqlite_master WHERE type IN ('table','view') ORDER BY name")]}
@@ -159,6 +171,10 @@ def dispatch(request):
             if not module: raise ValueError('Enter an Autopsy module name')
             # Local evidence/preview paths are never embedded in exported ingest modules.
             meta['path'] = ''; meta['module_display_name'] = module
+            resources = [Path(p).name for p in meta.pop('preprocess_inputs', [])]
+            if len(set(n.lower() for n in resources)) != len(resources): raise ValueError('Preprocessing resources need unique filenames')
+            meta['preprocess_resources'] = resources
+            meta['preprocess_resource_dir'] = request.get('resource_directory', '')
             meta.pop('script_dir', None)
             if meta.get('source_type') == 'sqlite' and not meta.get('query'):
                 table = meta.get('table','')

@@ -13,12 +13,12 @@ import java.util.concurrent.TimeUnit;
 import org.openide.modules.InstalledFileLocator;
 
 /** Runs the bundled stdlib-only tools without writing into the installation. */
-final class ArtifactFactoryBackend {
+public final class ArtifactFactoryBackend {
     private static final Gson GSON = new Gson();
     private ArtifactFactoryBackend() { }
 
-    static JsonObject run(String tool, JsonObject request) throws Exception {
-        if (!tool.equals("factory.py") && !tool.equals("cleaner.py")) {
+    public static JsonObject run(String tool, JsonObject request) throws Exception {
+        if (!tool.equals("factory.py") && !tool.equals("cleaner.py") && !tool.equals("geotime.py")) {
             throw new IOException("Unknown Artifact Wizard tool");
         }
         File script = InstalledFileLocator.getDefault().locate("artifact_factory/" + tool, null, false);

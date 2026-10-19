@@ -2,7 +2,7 @@ name: Autopsy QNXProbe fresh Windows build
 
 on:
   push:
-    branches: [develop, feature/nand-preprocessor-gui, feature/artifact-wizard-cleaner]
+    branches: [develop, feature/nand-preprocessor-gui, feature/artifact-wizard-cleaner, feature/dlt-geotime-carving]
     paths:
       - '.github/workflows/autopsy-qnxprobe-fresh.yml'
       - 'Core/src/org/sleuthkit/autopsy/casemodule/**'
@@ -10,6 +10,11 @@ on:
       - 'Tools/nand/**'
       - 'tests/nand/**'
       - 'Core/src/org/sleuthkit/autopsy/artifactfactory/**'
+      - 'Core/src/org/sleuthkit/autopsy/geolocation/**'
+      - 'Core/src/org/sleuthkit/autopsy/contentviewers/DltContentViewer.java'
+      - 'Core/src/org/sleuthkit/autopsy/modules/filetypeid/FileTypeDetector.java'
+      - 'Core/src/org/sleuthkit/autopsy/discovery/ui/OpenDiscoveryAction.java'
+      - 'Core/src/org/sleuthkit/autopsy/timeline/OpenTimelineAction.java'
       - 'Core/src/org/sleuthkit/autopsy/report/infrastructure/ReportWizardAction.java'
       - 'Tools/artifact_factory/**'
       - 'tests/artifact_factory/**'
@@ -50,6 +55,8 @@ jobs:
         shell: pwsh
         run: |
           python tests/artifact_factory/test_backend.py
+          if ($LASTEXITCODE -ne 0) { throw 'Artifact backend validation failed' }
+          python tests/artifact_factory/test_dlt_geotime.py
           if ($LASTEXITCODE -ne 0) { throw 'Artifact Wizard/cleaner backend tests failed' }
       - name: Install tools
         shell: pwsh
@@ -372,6 +379,8 @@ jobs:
           if (-not (Test-Path $jython)) { throw 'Packaged Jython runtime missing' }
           python tests/artifact_factory/test_backend.py --jython $jython
           if ($LASTEXITCODE -ne 0) { throw 'Generated Jython parser validation failed' }
+          python tests/artifact_factory/test_dlt_geotime.py --jython $jython
+          if ($LASTEXITCODE -ne 0) { throw 'DLT and GeoTime parser validation failed' }
           python tests/artifact_factory/test_packaged.py $dir
           if ($LASTEXITCODE -ne 0) { throw 'Packaged Artifact Wizard bridge or native-case cleaner failed' }
       - name: Smoke-test packaged Sleuth Kit JNI

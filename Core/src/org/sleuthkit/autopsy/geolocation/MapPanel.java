@@ -96,6 +96,7 @@ final public class MapPanel extends javax.swing.JPanel {
     private static final Set<Integer> VERY_SMALL_DOT_WAYPOINT_TYPES = new HashSet<>();
     private static final int VERY_SMALL_DOT_SIZE = 6;
 
+    private PreferenceChangeListener preferenceListener;
     private boolean zoomChanging;
     private KdTree<MapWaypoint> waypointTree;
     private Set<MapWaypoint> waypointSet;
@@ -156,7 +157,7 @@ final public class MapPanel extends javax.swing.JPanel {
             }
         });
 
-        UserPreferences.addChangeListener(new PreferenceChangeListener() {
+        preferenceListener = new PreferenceChangeListener() {
             @Override
             public void preferenceChange(PreferenceChangeEvent evt) {
                 try {
@@ -176,7 +177,8 @@ final public class MapPanel extends javax.swing.JPanel {
                             Bundle.MapPanel_connection_failure_message());
                 }
             }
-        });
+        };
+        UserPreferences.addChangeListener(preferenceListener);
     }
 
     /**
@@ -198,6 +200,30 @@ final public class MapPanel extends javax.swing.JPanel {
         }
 
         return waypoints;
+    }
+
+    /** Show independent carved coordinates on the same configured map source. */
+    void setCarvedPoints(java.util.List<GeoPosition> points) {
+        java.util.Set<org.jxmapviewer.viewer.DefaultWaypoint> markers = new java.util.LinkedHashSet<>();
+        for (GeoPosition point : points) markers.add(new org.jxmapviewer.viewer.DefaultWaypoint(point));
+        WaypointPainter<org.jxmapviewer.viewer.DefaultWaypoint> painter = new WaypointPainter<>();
+        painter.setWaypoints(markers);
+        mapViewer.setOverlayPainter(painter);
+        if (!points.isEmpty()) {
+            mapViewer.setCenterPosition(points.get(0));
+            if (points.size() > 1) mapViewer.zoomToBestFit(new java.util.HashSet<>(points), 0.7);
+            else setZoom(Math.min(8, mapViewer.getTileFactory().getInfo().getMaximumZoomLevel()));
+        }
+        mapViewer.repaint();
+    }
+
+    void focusCarvedPoint(GeoPosition point) {
+        mapViewer.setCenterPosition(point);
+    }
+
+    void closeCarvingMap() {
+        UserPreferences.removeChangeListener(preferenceListener);
+        mapViewer.getTileFactory().dispose();
     }
 
     /**
@@ -511,7 +537,7 @@ final public class MapPanel extends javax.swing.JPanel {
         Collection<MapWaypoint> waypoints = waypointTree.nearestNeighbourSearch(1, MapWaypoint.getDummyWaypoint(geopos));
 
         if (waypoints == null || waypoints.isEmpty()) {
-            return null;
+            return new ArrayList<>();
         }
 
         Iterator<MapWaypoint> iterator = waypoints.iterator();

@@ -74,3 +74,72 @@ Python runtime, creates a real native SleuthkitCase with Data/Analysis artifacts
 cleans and reopens it, and verifies preserved files, Analysis Results and scores.
 The lifecycle test rejects applying cleanup while a case remains open and tests
 reopening after successful cleanup, cleanup failure and close failure.
+
+## DLT and GeoTime Carving
+
+Branch `feature/dlt-geotime-carving` adds:
+
+* **DLT Table** in the lower Autopsy content pane. Select a `.dlt` file, or a
+  file with a DLT storage/serial signature. Recognition also works before MIME
+  ingest and on files previously identified as binary. File Type Identification
+  reports signed DLT content as `application/x-dlt`. The viewer reads a temporary
+  copy; evidence is unchanged. Pages contain up to 500 messages, with sorting,
+  a literal text filter for the current page, and full field/payload/hex details.
+* The Artifact Wizard source selector now includes **dlt**. Header and decoded
+  payload columns can be mapped to the seven existing artifact types. The same
+  DLT reader powers the preview, normalization and exported standalone Jython
+  ingest module. The **DLT Viewer** preview tab has paging and payload details.
+* **Preprocessing-Dateien auswählen…** opens a separate multiple-file chooser.
+  Its ordered list appears in the tooltip. `{inputs}` expands to all selected
+  files with command-line quoting. `{input1}`, `{input2}`, etc. refer to one file
+  each and should be quoted in commands. `{input}` remains the current pipeline
+  input; `{output}` and `{script_dir}` retain their previous meanings. For example:
+  `python {inputs} "{input}" "{output}"` can pass a selected script plus its
+  selected configuration before the evidence path. Exporting a module copies
+  these resources to a unique sibling directory referenced by the module.
+  Install/copy **both** the `.py` and its resource directory together. Local
+  preview/resource paths are not embedded in exported metadata.
+* **GeoTime Carving**, immediately right of Geolocation, opens a native Swing
+  tool for an external binary file or the selected Autopsy file/unallocated
+  object. Source content is read-only. It uses **the actual Geolocation MapPanel**
+  and the same map-source preferences, including configured offline ZIP/MBTiles.
+  It supports the reference parser's WKB, float32/64, semicircles, int32 scales
+  1e7 through 1e3, int16 scaled coordinates, LE/BE and swapped pairs. Timestamp
+  modes include Unix i32 seconds, i64 s/ms/us/ns, float64 seconds, FILETIME and
+  GPS week/TOW milliseconds. Manual stride and auto format/stride detection are
+  available. Radius/rectangle geofences apply **during auto scoring and full
+  parsing**; UTC time bounds apply to both as well. GPS times retain the original
+  parser's lack of leap-second correction. Geo and time are independent scans.
+  Clicking a geo table row centers the map. Results retain byte offsets. CSV,
+  GPX waypoints/track (geo only), and settings are saved to a new directory under
+  the case's `Export/geotime-carving` directory (the actual path is shown).
+  The table/map display up to 20,000 hits; exports contain all hits up to the
+  selected limit. Reaching the hit limit ends the scan. AUTO samples the first
+  5 MB before rerunning the chosen candidate on the full file. Interpret matches
+  as carving candidates and verify them against source bytes. Cancel/closing the
+  tool stops background processing; an interrupted export may leave partial files
+  in that run's unique directory. A completed run includes `settings.json`.
+
+DLT scope: classic DLT **v1 storage files** (`DLT 01`) and serial framing
+(`DLS 01`), standard/extended headers, storage UTC time, ECU/APID/CTID,
+message counter, session, uptime, message type/level, verbose scalar arguments
+(strings including UTF-8, bool, integers, float32/64, raw bytes). Non-verbose
+records expose message ID and raw hex; no FIBEX dictionary is inferred. Arrays,
+fixed point, structs and trace argument layouts retain raw payload with a decode
+status. Corrupt sections are resynchronized; truncated records are reported.
+DLT v2 is explicitly rejected rather than interpreted as v1. Headerless raw
+network captures and packet reassembly are outside this reader's scope.
+
+Geo/time core provenance:
+https://github.com/Gerd1986/binary_timestamp_geo_parser/tree/5ce4c9d41df22bb764ac068f8d38f5b7cf12ab8f
+(stdlib parser/export functions adapted without desktop dependencies).
+DLT wire reference:
+https://github.com/COVESA/dlt-daemon/blob/master/include/dlt/dlt_protocol.h
+and `dlt_common.h` / `src/shared/dlt_common.c` in the same repository.
+
+Additional validation:
+`python tests/artifact_factory/test_dlt_geotime.py --jython PATH/TO/jython.jar`.
+The Windows workflow additionally checks the packaged isolated Python bridge,
+registered DLT viewer, exact toolbar ordering, and the existing native-case
+cleaner/launcher/FTL100 checks. The new branch builds a downloadable Actions
+artifact; publication of the previous Wizard branch is independent.

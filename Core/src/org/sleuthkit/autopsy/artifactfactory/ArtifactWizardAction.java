@@ -16,8 +16,8 @@ import org.openide.windows.WindowManager;
 import org.sleuthkit.autopsy.casemodule.Case;
 
 @ActionID(category = "Tools", id = "org.sleuthkit.autopsy.artifactfactory.ArtifactWizardAction")
-@ActionReferences({@ActionReference(path = "Menu/Tools", position = 106),
-    @ActionReference(path = "Toolbars/Case", position = 106)})
+@ActionReferences({@ActionReference(path = "Menu/Tools", position = 107),
+    @ActionReference(path = "Toolbars/Case", position = 107)})
 @ActionRegistration(displayName = "#CTL_ArtifactWizard", lazy = false)
 @NbBundle.Messages("CTL_ArtifactWizard=Artifact Wizard")
 public final class ArtifactWizardAction extends CallableSystemAction implements Presenter.Toolbar {

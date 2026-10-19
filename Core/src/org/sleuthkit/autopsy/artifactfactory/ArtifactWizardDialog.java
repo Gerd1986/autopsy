@@ -49,7 +49,7 @@ final class ArtifactWizardDialog extends JDialog {
     private final JPanel content = new JPanel(new BorderLayout(8, 8));
     private final JLabel status = new JLabel("Vorschau laden und die Felder zuordnen.");
     private final JComboBox<String> type = new JComboBox<>(new String[]{"Geo-Track", "Last-Position", "Geo-Bookmark", "Event", "Mobile", "Bluetooth", "Call"});
-    private final JComboBox<String> source = new JComboBox<>(new String[]{"csv", "sqlite", "regex"});
+    private final JComboBox<String> source = new JComboBox<>(new String[]{"csv", "sqlite", "regex", "dlt"});
     private final JTextField input = new JTextField(45);
     private final JTextField filename = new JTextField(30);
     private final JTextField module = new JTextField("Mein Artifact Parser", 30);
@@ -58,6 +58,9 @@ final class ArtifactWizardDialog extends JDialog {
     private final JTextArea query = new JTextArea(3, 45);
     private final JTextArea regex = new JTextArea(3, 45);
     private final JCheckBox multiline = new JCheckBox("Mehrzeilige Treffer (MULTILINE + DOTALL)");
+    private final java.util.List<Path> preprocessInputs = new java.util.ArrayList<>();
+    private final JLabel inputCount = new JLabel("Keine Zusatzdateien ausgewählt");
+    private final DltTablePanel dltPreview = new DltTablePanel();
     private final JTable preview = new JTable();
     private final JPanel mappings = new JPanel(new GridBagLayout());
     private final Map<String, JComboBox<String>> mappingBoxes = new LinkedHashMap<>();
@@ -73,7 +76,7 @@ final class ArtifactWizardDialog extends JDialog {
         super(owner, "Artifact Wizard", true);
         setDefaultCloseOperation(DO_NOTHING_ON_CLOSE);
         addWindowListener(new WindowAdapter() {
-            @Override public void windowClosing(WindowEvent e) { if (!busy) dispose(); }
+            @Override public void windowClosing(WindowEvent e) { if (!busy) { dltPreview.reset(); dispose(); } }
         });
         content.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
         JTabbedPane tabs = new JTabbedPane();
@@ -114,15 +117,20 @@ final class ArtifactWizardDialog extends JDialog {
         stepButtons.add(button("Bearbeiten", () -> { if (pipeline.getSelectedRow() >= 0) editStep(pipeline.getSelectedRow()); }));
         stepButtons.add(button("Entfernen", () -> { if (pipeline.getSelectedRow() >= 0) steps.removeRow(pipeline.getSelectedRow()); }));
         stepButtons.add(button("↑", () -> moveStep(-1))); stepButtons.add(button("↓", () -> moveStep(1)));
+        stepButtons.add(button("Preprocessing-Dateien auswählen…", this::choosePreprocessInputs));
+        stepButtons.add(inputCount);
         preprocessing.add(stepButtons, BorderLayout.SOUTH);
         row(fields, 9, "Preprocessing (optional)", preprocessing);
-        row(fields, 10, "Platzhalter", new JLabel("{input}, {output}, {script_dir}; ohne {output} wird stdout übernommen."));
+        row(fields, 10, "Platzhalter", new JLabel("{input}, {output}, {script_dir}, {inputs} (alle Dateien), {input1} …; einzelne Pfade in Anführungszeichen setzen."));
         JPanel top = new JPanel(new BorderLayout()); top.add(fields);
         top.add(button("Vorschau laden (bis 50 Zeilen)", this::loadPreview), BorderLayout.SOUTH);
         panel.add(top, BorderLayout.NORTH);
         preview.setAutoResizeMode(JTable.AUTO_RESIZE_OFF);
         preview.setModel(readOnlyModel());
-        JSplitPane center = new JSplitPane(JSplitPane.VERTICAL_SPLIT, new JScrollPane(preview), new JScrollPane(mappings));
+        JTabbedPane previewTabs = new JTabbedPane();
+        previewTabs.addTab("Tabelle", new JScrollPane(preview));
+        previewTabs.addTab("DLT Viewer", dltPreview);
+        JSplitPane center = new JSplitPane(JSplitPane.VERTICAL_SPLIT, previewTabs, new JScrollPane(mappings));
         center.setResizeWeight(0.65); center.setDividerLocation(140);
         panel.add(center);
         JPanel actions = new JPanel(new FlowLayout(FlowLayout.LEFT));
@@ -138,8 +146,20 @@ final class ArtifactWizardDialog extends JDialog {
         JFileChooser chooser = new JFileChooser();
         if (chooser.showOpenDialog(this) == JFileChooser.APPROVE_OPTION) {
             input.setText(chooser.getSelectedFile().getAbsolutePath());
+            if (chooser.getSelectedFile().getName().toLowerCase(java.util.Locale.ROOT).endsWith(".dlt")) source.setSelectedItem("dlt");
             if (filename.getText().isBlank()) filename.setText(chooser.getSelectedFile().getName());
             previewSignature = null;
+        }
+    }
+
+    private void choosePreprocessInputs() {
+        JFileChooser chooser = new JFileChooser(); chooser.setMultiSelectionEnabled(true);
+        chooser.setDialogTitle("Alle Preprocessing-Dateien auswählen (Skripte, Konfigurationen, Zusatzdaten)");
+        if (chooser.showOpenDialog(this) == JFileChooser.APPROVE_OPTION) {
+            preprocessInputs.clear();
+            for (java.io.File file : chooser.getSelectedFiles()) preprocessInputs.add(file.toPath().toAbsolutePath());
+            inputCount.setText(preprocessInputs.size()+" Dateien");
+            inputCount.setToolTipText(preprocessInputs.toString()); previewSignature = null; dltPreview.reset();
         }
     }
 
@@ -156,6 +176,9 @@ final class ArtifactWizardDialog extends JDialog {
             s.addProperty("command", steps.getValueAt(i, 1).toString()); s.addProperty("output_suffix", steps.getValueAt(i, 2).toString());
             s.addProperty("shell", Boolean.TRUE.equals(steps.getValueAt(i, 3))); list.add(s);
         }
+        JsonArray inputs = new JsonArray();
+        for (Path path : preprocessInputs) inputs.add(path.toString());
+        m.add("preprocess_inputs", inputs);
         m.add("preprocess_steps", list);
         return m;
     }
@@ -184,7 +207,7 @@ final class ArtifactWizardDialog extends JDialog {
     }
 
     private void loadPreview() {
-        JsonObject r = request("preview", false); previewSignature = null;
+        JsonObject r = request("preview", false); previewSignature = null; dltPreview.reset();
         runAsync(() -> ArtifactFactoryBackend.run("factory.py", r), result -> {
             JsonArray names = result.getAsJsonArray("columns"); columns = new String[names.size()];
             for (int i = 0; i < columns.length; i++) columns[i] = names.get(i).getAsString();
@@ -197,6 +220,7 @@ final class ArtifactWizardDialog extends JDialog {
                 }
                 model.addRow(cells);
             }
+            if ("dlt".equals(source.getSelectedItem())) dltPreview.open(r.getAsJsonObject("meta"));
             preview.setModel(model); previewSignature = r.get("meta").toString(); rebuildMappings();
             status.setText(model.getRowCount() + " Zeilen in der Vorschau.");
         });
@@ -242,10 +266,28 @@ final class ArtifactWizardDialog extends JDialog {
             if (output.toAbsolutePath().normalize().equals(evidence) || (Files.exists(output) && Files.isSameFile(output, evidence))) {
                 throw new IllegalStateException("Die Preview-/Beweisdatei darf nicht überschrieben werden.");
             }
+            for (Path resource : preprocessInputs) {
+                if (output.toAbsolutePath().normalize().equals(resource.toAbsolutePath().normalize()) || (Files.exists(output) && Files.isSameFile(output, resource))) throw new IllegalStateException("Preprocessing-Dateien dürfen nicht überschrieben werden.");
+            }
+            String resourceName = output.getFileName().toString()+"_inputs_"+java.util.UUID.randomUUID().toString();
+            Path resourceDir = output.toAbsolutePath().getParent().resolve(resourceName);
+            r.addProperty("resource_directory", resourceName);
             if (Files.exists(output) && JOptionPane.showConfirmDialog(this, "Vorhandenes Modul überschreiben?", "Modul-Export", JOptionPane.YES_NO_OPTION) != JOptionPane.YES_OPTION) return;
             runAsync(() -> {
                 JsonObject result = ArtifactFactoryBackend.run("factory.py", r);
-                Files.writeString(output, result.get("code").getAsString(), StandardCharsets.UTF_8);
+                boolean saved = false;
+                try {
+                    if (!preprocessInputs.isEmpty()) {
+                        Files.createDirectory(resourceDir);
+                        for (Path resource : preprocessInputs) Files.copy(resource, resourceDir.resolve(resource.getFileName()), java.nio.file.StandardCopyOption.COPY_ATTRIBUTES);
+                    }
+                    Files.writeString(output, result.get("code").getAsString(), StandardCharsets.UTF_8);
+                    saved = true;
+                } finally {
+                    if (!saved && Files.isDirectory(resourceDir)) {
+                        try (java.util.stream.Stream<Path> entries = Files.walk(resourceDir)) { for (Path entry : entries.sorted(java.util.Comparator.reverseOrder()).toArray(Path[]::new)) Files.deleteIfExists(entry); }
+                    }
+                }
                 return result;
             }, result -> JOptionPane.showMessageDialog(this, "Ingest-Modul gespeichert:\n"+output));
         } catch (Exception ex) { error(ex); }
