@@ -175,21 +175,13 @@ def _preprocess_steps_from_meta(meta):
             })
     return steps
 
-def _run_preprocess_step(step, input_path, step_index, script_dir, inputs):
+def _run_preprocess_step(step, input_path, step_index, meta):
     out_suffix = step.get("output_suffix") or os.path.splitext(input_path)[1] or ".txt"
     tmp_dir = tempfile.mkdtemp(prefix="autopsy_pre_")
     out_path = os.path.join(tmp_dir, "preprocessed_step_%d" % (step_index + 1) + out_suffix)
-    cmd_template = step["command"]
-    if script_dir:
-        cmd_template = cmd_template.replace("{script_dir}", str(script_dir).replace("\\", "/"))
-    joined = subprocess.list2cmdline(inputs) if os.name == "nt" else " ".join("'" + v.replace("'", "'\\''") + "'" for v in inputs)
-    cmd = cmd_template.replace("{inputs}", joined)
-    for number, value in enumerate(inputs, 1): cmd = cmd.replace("{input%d}" % number, value)
-    cmd = cmd.replace("{input}", input_path).replace("{output}", out_path)
-    if step.get("shell", False):
-        pipe = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    else:
-        pipe = subprocess.Popen(cmd if os.name == "nt" else shlex.split(cmd), shell=False, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    context = dict(meta); context["_step_shell"] = step.get("shell", False)
+    args, cwd = resolve_preprocess(step["command"], context, input_path, out_path, meta.get("preprocess_inputs", []))
+    pipe = subprocess.Popen(args, cwd=cwd, env=preprocessing_environment(), shell=step.get("shell", False), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     stdout_data, stderr_data = pipe.communicate()
     if pipe.returncode != 0:
         if stderr_data is None:
@@ -217,7 +209,7 @@ def _run_preprocess_if_needed(meta):
     current_path = meta["path"]
     script_dir = meta.get("script_dir")
     for idx, step in enumerate(steps):
-        current_path = _run_preprocess_step(step, current_path, idx, script_dir, meta.get("preprocess_inputs", []))
+        current_path = _run_preprocess_step(step, current_path, idx, meta)
     new_meta["path"] = current_path
     return new_meta
 
@@ -301,6 +293,9 @@ def parse_rows(meta, mapping, plugin_type):
         out.append(rec)
     return out
 '''
+
+from pathlib import Path as _TemplatePath
+EMBEDDED_PARSER_BLOCK = (_TemplatePath(__file__).parent / "preprocess.py").read_text(encoding="utf-8") + "\n" + EMBEDDED_PARSER_BLOCK
 
 SQLITE_JDBC_BLOCK = r'''
 from java.sql import DriverManager
@@ -477,6 +472,25 @@ from org.sleuthkit.autopsy.ingest import IngestMessage
 from java.util import ArrayList
 from java.io import File
 import os
+
+def _stage_case_folder(folder, destination, seen=None):
+    if seen is None:
+        seen = set()
+    if folder.getId() in seen:
+        return
+    seen.add(folder.getId())
+    os.makedirs(destination)
+    for child in folder.getChildren():
+        name = child.getName()
+        if name in (".", ".."):
+            continue
+        if not name or "/" in name or chr(92) in name:
+            raise ValueError("Unsafe source filename")
+        target = os.path.join(destination, name)
+        if child.isDir():
+            _stage_case_folder(child, target, seen)
+        else:
+            ContentUtils.writeToFile(child, File(target))
 '''
 
     parts = [header]
@@ -525,12 +539,19 @@ class UniversalPluginModule(DataSourceIngestModule):
                     pass
 
                 outFile = os.path.join(tempDir, _unique_temp_name(file.getName(), "evidence_"))
-                ContentUtils.writeToFile(file, File(outFile))
+                if bool(file.isDir()) != bool(META.get("input_is_directory", False)):
+                    continue
+                if file.isDir():
+                    _stage_case_folder(file, outFile)
+                else:
+                    ContentUtils.writeToFile(file, File(outFile))
 
                 meta = dict(META)
                 meta["path"] = outFile
                 meta["script_dir"] = os.path.dirname(__file__).replace("\\\\", "/")
 
+                meta["tool_dir"] = os.path.join(os.path.dirname(__file__), meta["preprocess_tool_subdir"]) if meta.get("preprocess_tool_subdir") else ""
+                meta["resource_dir"] = os.path.join(os.path.dirname(__file__), meta.get("preprocess_resource_dir", ""))
                 meta["preprocess_inputs"] = [os.path.join(os.path.dirname(__file__), meta.get("preprocess_resource_dir", ""), n) for n in meta.get("preprocess_resources", [])]
                 if meta.get("source_type") == "sqlite":
                     for suffix in ["-wal", "-shm"]:

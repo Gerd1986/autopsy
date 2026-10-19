@@ -15,6 +15,7 @@ import subprocess
 import sys
 import tempfile
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+from preprocess import resolve_preprocess, preprocessing_environment
 from dlt import iter_dlt, DLT_COLUMNS
 from template_core import EMBEDDED_PARSER_BLOCK, build_autopsy_template
 
@@ -58,21 +59,13 @@ def pipeline(meta, directory):
             raise ValueError('Invalid preprocessing output suffix')
         output = Path(directory)/('step-%d'%index+suffix)
         inputs = [str(Path(p).resolve()) for p in meta.get('preprocess_inputs', [])]
-        joined = subprocess.list2cmdline(inputs) if os.name == 'nt' else ' '.join(shlex.quote(p) for p in inputs)
-        command = step['command'].replace('{inputs}', joined)
-        for number, value in enumerate(inputs, 1): command = command.replace('{input%d}'%number, value)
-        command = command.replace('{input}', str(current)).replace('{output}', str(output)).replace('{script_dir}', str(Path(meta['path']).resolve().parent))
         shell = step.get('shell', False)
-        if type(shell) is not bool:
-            raise ValueError('shell must be true or false')
-        if not shell and os.name == 'nt':
-            # CommandLineToArgvW semantics via the normal Windows process API.
-            args = command
-        else:
-            args = command if shell else shlex.split(command)
+        if type(shell) is not bool: raise ValueError('shell must be true or false')
+        context = dict(meta); context['_step_shell'] = shell
+        args, cwd = resolve_preprocess(step['command'], context, str(current), str(output), inputs)
         captured = Path(directory)/('stdout-%d'%index)
         with captured.open('wb') as stdout:
-            result = subprocess.run(args, shell=shell, stdout=stdout, stderr=subprocess.PIPE, timeout=120)
+            result = subprocess.run(args, shell=shell, cwd=cwd, env=preprocessing_environment(), stdout=stdout, stderr=subprocess.PIPE, timeout=120)
         if result.returncode:
             raise ValueError('Preprocessing step %d failed: %s'%(index+1, result.stderr.decode('utf-8','replace')[-4000:]))
         if not output.exists():
@@ -139,7 +132,7 @@ def normalize(input_rows, mapping, kind):
 def validate(request):
     meta = dict(request.get('meta', {}))
     source = Path(meta.get('path', ''))
-    if not source.is_file():
+    if not source.is_file() and not (source.is_dir() and meta.get('preprocess_steps')):
         raise ValueError('Select a readable input file')
     meta['path'] = str(source.resolve())
     kind = request.get('plugin_type', 'Geo-Track')
@@ -176,6 +169,9 @@ def dispatch(request):
             meta['preprocess_resources'] = resources
             meta['preprocess_resource_dir'] = request.get('resource_directory', '')
             meta.pop('script_dir', None)
+            meta.pop('tool_dir', None)
+            meta.pop('resource_dir', None)
+            meta['preprocess_tool_subdir'] = request.get('tool_directory', '')
             if meta.get('source_type') == 'sqlite' and not meta.get('query'):
                 table = meta.get('table','')
                 if not table: raise ValueError('Select a table or enter a SQL query')

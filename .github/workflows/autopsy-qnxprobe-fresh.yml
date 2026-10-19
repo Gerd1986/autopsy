@@ -57,6 +57,8 @@ jobs:
           python tests/artifact_factory/test_backend.py
           if ($LASTEXITCODE -ne 0) { throw 'Artifact backend validation failed' }
           python tests/artifact_factory/test_dlt_geotime.py
+          if ($LASTEXITCODE -ne 0) { throw 'DLT/GeoTime validation failed' }
+          python tests/artifact_factory/test_preprocessing.py
           if ($LASTEXITCODE -ne 0) { throw 'Artifact Wizard/cleaner backend tests failed' }
       - name: Install tools
         shell: pwsh
@@ -381,6 +383,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Generated Jython parser validation failed' }
           python tests/artifact_factory/test_dlt_geotime.py --jython $jython
           if ($LASTEXITCODE -ne 0) { throw 'DLT and GeoTime parser validation failed' }
+          python tests/artifact_factory/test_preprocessing.py --jython $jython
+          if ($LASTEXITCODE -ne 0) { throw 'Preprocessing folder/resolution validation failed' }
           python tests/artifact_factory/test_packaged.py $dir
           if ($LASTEXITCODE -ne 0) { throw 'Packaged Artifact Wizard bridge or native-case cleaner failed' }
       - name: Smoke-test packaged Sleuth Kit JNI

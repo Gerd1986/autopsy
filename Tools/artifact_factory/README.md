@@ -143,3 +143,52 @@ The Windows workflow additionally checks the packaged isolated Python bridge,
 registered DLT viewer, exact toolbar ordering, and the existing native-case
 cleaner/launcher/FTL100 checks. The new branch builds a downloadable Actions
 artifact; publication of the previous Wizard branch is independent.
+
+### Plugin tools, directory input and case browser
+
+The preview's **Datei…**, **Input-Ordner…** and **Aus Fall wählen…** buttons
+select the primary evidence input. The case browser lazily traverses the open
+case, allowing file or directory selection without a manual export. It stages
+private temporary bytes for external processes; source evidence stays intact.
+SQLite WAL/SHM siblings are staged from the same parent. A directory input needs
+an explicit preprocessing step that turns it into CSV/SQLite/text/DLT. The
+exported ingest module also stages matching source directories recursively.
+
+**Skript-/Tool-Ordner…** selects a separate tool/configuration directory. It is
+copied recursively into the exported plugin's unique resource folder, preserving
+relative subdirectories. Place the exported `.py` and that folder together when
+installing. Export outside the selected tool directory; symlinked tool entries
+are rejected rather than silently packaging incomplete trees.
+
+For shell-free commands, relative Python/Perl scripts and EXEs are resolved in
+the explicitly selected tool directory first, then the plugin directory, then
+the packaged resource directory. Preview's default plugin directory is Autopsy's
+user `python_modules` folder; exported modules use their own `__file__` parent.
+Absolute program paths are preserved. Working directory is the selected tool
+folder, otherwise the plugin folder, so adjacent configurations are available.
+Bare `.py` commands use the bundled Python 3 when running inside packaged Autopsy
+(with system `python` fallback); bare `.pl` commands use `perl` from PATH. Explicit
+interpreters like `py -3`, `python` and `perl` continue to work. EXEs run directly.
+
+Examples (Shell unchecked):
+
+```
+python decoder.py "{input}"
+perl decoder.pl "{input}" "{output}"
+decoder.exe "{input_dir}" "{output}"
+pas_geotime_stdout.py "{input}" --tz +00:00
+```
+
+`{script_dir}` now consistently denotes the plugin folder; `{tool_dir}` the
+selected tool folder, falling back to the plugin folder; `{input_dir}` the
+current input directory (or the parent of a file). `{inputs}` and `{input1}` etc.
+retain the additional-resource semantics above. stdout is used when the command
+does not create `{output}`. Shell mode intentionally preserves user shell syntax
+and requires explicit paths/placeholders instead of automatic token rewriting.
+
+Additional coverage: `test_preprocessing.py --jython PATH/TO/jython.jar` tests
+plugin/tool resolution, directory inputs, relative configurations, Windows
+argument quoting and real generated-parser execution. `CaseInputStagingTest`
+uses a real native SleuthkitCase to validate file/folder copying, WAL/SHM, source
+preservation and cleanup. The packaged toolbar-order test uses the actual
+registered Timeline action ID (`timeline.Timeline`).

@@ -59,6 +59,9 @@ final class ArtifactWizardDialog extends JDialog {
     private final JTextArea regex = new JTextArea(3, 45);
     private final JCheckBox multiline = new JCheckBox("Mehrzeilige Treffer (MULTILINE + DOTALL)");
     private final java.util.List<Path> preprocessInputs = new java.util.ArrayList<>();
+    private Path toolDirectory;
+    private CaseInputStager caseInput;
+    private final JLabel toolFolderLabel = new JLabel("Plugin-Ordner (Standard)");
     private final JLabel inputCount = new JLabel("Keine Zusatzdateien ausgewählt");
     private final DltTablePanel dltPreview = new DltTablePanel();
     private final JTable preview = new JTable();
@@ -76,7 +79,7 @@ final class ArtifactWizardDialog extends JDialog {
         super(owner, "Artifact Wizard", true);
         setDefaultCloseOperation(DO_NOTHING_ON_CLOSE);
         addWindowListener(new WindowAdapter() {
-            @Override public void windowClosing(WindowEvent e) { if (!busy) { dltPreview.reset(); dispose(); } }
+            @Override public void windowClosing(WindowEvent e) { if (!busy) { dltPreview.reset(); clearCaseInput(); dispose(); } }
         });
         content.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
         JTabbedPane tabs = new JTabbedPane();
@@ -86,7 +89,7 @@ final class ArtifactWizardDialog extends JDialog {
         content.add(status, BorderLayout.SOUTH);
         setContentPane(content);
         setMinimumSize(new Dimension(760, 650));
-        setSize(1040, 850);
+        setSize(1180, 950);
         setLocationRelativeTo(owner);
         rebuildMappings();
     }
@@ -97,8 +100,12 @@ final class ArtifactWizardDialog extends JDialog {
         table.setEditable(true);
         row(fields, 0, "Artefakttyp", type);
         JPanel path = new JPanel(new BorderLayout(6, 0)); path.add(input);
-        path.add(button("Durchsuchen…", this::chooseInput), BorderLayout.EAST);
-        row(fields, 1, "Preview-Datei", path);
+        JPanel inputButtons = new JPanel(new FlowLayout(FlowLayout.RIGHT, 3, 0));
+        inputButtons.add(button("Datei…", this::chooseInput));
+        inputButtons.add(button("Input-Ordner…", this::chooseInputFolder));
+        inputButtons.add(button("Aus Fall wählen…", this::chooseCaseInput));
+        path.add(inputButtons, BorderLayout.EAST);
+        row(fields, 1, "Preview-Input", path);
         JPanel kind = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
         kind.add(source); kind.add(new JLabel("CSV-Trenner:")); kind.add(separator);
         kind.add(button("SQLite-Tabellen laden", this::loadTables));
@@ -117,11 +124,17 @@ final class ArtifactWizardDialog extends JDialog {
         stepButtons.add(button("Bearbeiten", () -> { if (pipeline.getSelectedRow() >= 0) editStep(pipeline.getSelectedRow()); }));
         stepButtons.add(button("Entfernen", () -> { if (pipeline.getSelectedRow() >= 0) steps.removeRow(pipeline.getSelectedRow()); }));
         stepButtons.add(button("↑", () -> moveStep(-1))); stepButtons.add(button("↓", () -> moveStep(1)));
-        stepButtons.add(button("Preprocessing-Dateien auswählen…", this::choosePreprocessInputs));
-        stepButtons.add(inputCount);
-        preprocessing.add(stepButtons, BorderLayout.SOUTH);
+        JPanel resourceButtons=new JPanel(new FlowLayout(FlowLayout.LEFT,4,1));
+        resourceButtons.add(button("Preprocessing-Dateien auswählen…",this::choosePreprocessInputs));resourceButtons.add(inputCount);
+        JPanel folderButtons=new JPanel(new FlowLayout(FlowLayout.LEFT,4,1));
+        folderButtons.add(button("Skript-/Tool-Ordner…",this::chooseToolFolder));
+        folderButtons.add(button("Plugin-Ordner verwenden",()->{toolDirectory=null;toolFolderLabel.setText("Plugin-Ordner (Standard)");previewSignature=null;}));
+        toolFolderLabel.setPreferredSize(new Dimension(200,22));folderButtons.add(toolFolderLabel);
+        JPanel buttonRows=new JPanel();buttonRows.setLayout(new javax.swing.BoxLayout(buttonRows,javax.swing.BoxLayout.Y_AXIS));
+        buttonRows.add(stepButtons);buttonRows.add(resourceButtons);buttonRows.add(folderButtons);
+        preprocessing.add(buttonRows,BorderLayout.SOUTH);
         row(fields, 9, "Preprocessing (optional)", preprocessing);
-        row(fields, 10, "Platzhalter", new JLabel("{input}, {output}, {script_dir}, {inputs} (alle Dateien), {input1} …; einzelne Pfade in Anführungszeichen setzen."));
+        row(fields, 10, "Platzhalter", new JLabel("<html>{input}, {output}, {script_dir}, {tool_dir}, {input_dir}, {inputs}, {input1} …<br>Einzelne Pfade in Anführungszeichen setzen; Ordner-Input benötigt einen Preprocessing-Schritt.</html>"));
         JPanel top = new JPanel(new BorderLayout()); top.add(fields);
         top.add(button("Vorschau laden (bis 50 Zeilen)", this::loadPreview), BorderLayout.SOUTH);
         panel.add(top, BorderLayout.NORTH);
@@ -145,11 +158,43 @@ final class ArtifactWizardDialog extends JDialog {
     private void chooseInput() {
         JFileChooser chooser = new JFileChooser();
         if (chooser.showOpenDialog(this) == JFileChooser.APPROVE_OPTION) {
-            input.setText(chooser.getSelectedFile().getAbsolutePath());
+            dltPreview.reset(); clearCaseInput(); input.setText(chooser.getSelectedFile().getAbsolutePath());
             if (chooser.getSelectedFile().getName().toLowerCase(java.util.Locale.ROOT).endsWith(".dlt")) source.setSelectedItem("dlt");
             if (filename.getText().isBlank()) filename.setText(chooser.getSelectedFile().getName());
             previewSignature = null;
         }
+    }
+
+    private void clearCaseInput() {
+        if(caseInput!=null){try{caseInput.close();}catch(Exception ex){caseInput.input().toFile().deleteOnExit();}caseInput=null;}
+    }
+
+    private void chooseInputFolder() {
+        JFileChooser chooser=new JFileChooser();chooser.setFileSelectionMode(JFileChooser.DIRECTORIES_ONLY);
+        if(chooser.showOpenDialog(this)==JFileChooser.APPROVE_OPTION){dltPreview.reset();clearCaseInput();input.setText(chooser.getSelectedFile().getAbsolutePath());filename.setText(chooser.getSelectedFile().getName());previewSignature=null;}
+    }
+
+    private void chooseToolFolder() {
+        JFileChooser chooser=new JFileChooser();chooser.setDialogTitle("Ordner mit Preprocessing-Skripten, EXEs und Konfigurationen");chooser.setFileSelectionMode(JFileChooser.DIRECTORIES_ONLY);
+        if(chooser.showOpenDialog(this)==JFileChooser.APPROVE_OPTION){toolDirectory=chooser.getSelectedFile().toPath().toAbsolutePath();toolFolderLabel.setText(toolDirectory.toString());toolFolderLabel.setToolTipText(toolDirectory.toString());previewSignature=null;}
+    }
+
+    private void chooseCaseInput() {
+        try {
+            org.sleuthkit.datamodel.AbstractFile selected=CaseInputChooser.choose(this);
+            if(selected==null)return;
+            java.util.concurrent.atomic.AtomicReference<CaseInputStager> prepared=new java.util.concurrent.atomic.AtomicReference<>();
+            runAsync(() -> {
+                CaseInputStager staged=new CaseInputStager(selected);prepared.set(staged);
+                JsonObject value=new JsonObject();value.addProperty("path",staged.input().toString());
+                return value;
+            }, value -> {
+                dltPreview.reset();clearCaseInput();caseInput=prepared.get();
+                input.setText(value.get("path").getAsString());input.setToolTipText("Fallobjekt "+selected.getId()+": "+selected.getName());filename.setText(selected.getName());
+                if(selected.getName().toLowerCase(java.util.Locale.ROOT).endsWith(".dlt"))source.setSelectedItem("dlt");
+                previewSignature=null;status.setText("Falldatei intern bereitgestellt; kein manueller Export erforderlich.");
+            });
+        } catch(Exception ex){error(ex);}
     }
 
     private void choosePreprocessInputs() {
@@ -166,6 +211,9 @@ final class ArtifactWizardDialog extends JDialog {
     private JsonObject meta() {
         JsonObject m = new JsonObject();
         m.addProperty("path", input.getText().trim()); m.addProperty("source_type", (String) source.getSelectedItem());
+        m.addProperty("script_dir", org.sleuthkit.autopsy.coreutils.PlatformUtil.getUserPythonModulesPath());
+        m.addProperty("tool_dir", toolDirectory == null ? "" : toolDirectory.toString());
+        m.addProperty("input_is_directory", !input.getText().isBlank() && Files.isDirectory(Path.of(input.getText())));
         m.addProperty("sep", (String) separator.getSelectedItem());
         m.addProperty("table", table.getEditor().getItem() == null ? "" : table.getEditor().getItem().toString());
         m.addProperty("query", query.getText().trim());
@@ -272,14 +320,25 @@ final class ArtifactWizardDialog extends JDialog {
             String resourceName = output.getFileName().toString()+"_inputs_"+java.util.UUID.randomUUID().toString();
             Path resourceDir = output.toAbsolutePath().getParent().resolve(resourceName);
             r.addProperty("resource_directory", resourceName);
+            r.addProperty("tool_directory", toolDirectory == null ? "" : resourceName+"/tools");
             if (Files.exists(output) && JOptionPane.showConfirmDialog(this, "Vorhandenes Modul überschreiben?", "Modul-Export", JOptionPane.YES_NO_OPTION) != JOptionPane.YES_OPTION) return;
             runAsync(() -> {
                 JsonObject result = ArtifactFactoryBackend.run("factory.py", r);
                 boolean saved = false;
                 try {
-                    if (!preprocessInputs.isEmpty()) {
+                    if (!preprocessInputs.isEmpty() || toolDirectory != null) {
                         Files.createDirectory(resourceDir);
                         for (Path resource : preprocessInputs) Files.copy(resource, resourceDir.resolve(resource.getFileName()), java.nio.file.StandardCopyOption.COPY_ATTRIBUTES);
+                        if(toolDirectory!=null) {
+                            if(resourceDir.startsWith(toolDirectory))throw new IllegalStateException("Exportziel muss außerhalb des Skript-/Tool-Ordners liegen.");
+                            try(java.util.stream.Stream<Path> entries=Files.walk(toolDirectory)) {
+                                for(Path entry:entries.toArray(Path[]::new)) {
+                                    if(Files.isSymbolicLink(entry))throw new IllegalStateException("Bitte einen Tool-Ordner ohne symbolische Links verwenden: "+entry);
+                                    Path destination=resourceDir.resolve("tools").resolve(toolDirectory.relativize(entry));
+                                    if(Files.isDirectory(entry))Files.createDirectory(destination);else Files.copy(entry,destination,java.nio.file.StandardCopyOption.COPY_ATTRIBUTES);
+                                }
+                            }
+                        }
                     }
                     Files.writeString(output, result.get("code").getAsString(), StandardCharsets.UTF_8);
                     saved = true;
