@@ -92,6 +92,7 @@ public class ImageFilePanel extends JPanel {
         this.contextName = context;
         initComponents();
         initNandConfigControls();
+        initMergeFilesControls();
 
         // Populate the drop down list of time zones
         createTimeZoneList();
@@ -188,6 +189,25 @@ public class ImageFilePanel extends JPanel {
             }
         });
         nandClearButton.addActionListener(e -> nandConfigField.setText(""));
+    }
+
+    private void initMergeFilesControls() {
+        java.awt.GridBagLayout layout=(java.awt.GridBagLayout)getLayout();
+        for(java.awt.Component component:getComponents()) {
+            java.awt.GridBagConstraints existing=layout.getConstraints(component);
+            if(existing.gridy>=12){existing.gridy++;layout.setConstraints(component,existing);}
+        }
+        javax.swing.JButton merge=new javax.swing.JButton("MergeFiles – Dateien verschachteln…");
+        merge.setToolTipText("Dateien blockweise mit wählbarer Reihenfolge und Byte-Swap zu einem Image verschachteln.");
+        merge.addActionListener(e -> {
+            java.nio.file.Path result=MergeFilesDialog.show(javax.swing.SwingUtilities.getWindowAncestor(this),getContentPaths());
+            if(result!=null) {
+                md5HashTextField.setText("");sha1HashTextField.setText("");sha256HashTextField.setText("");passwordTextField.setText("");
+                nandConfigField.setText("");
+                setContentPath(result.toString());updateHelper();
+            }
+        });
+        java.awt.GridBagConstraints c=new java.awt.GridBagConstraints();c.gridx=1;c.gridy=12;c.gridwidth=2;c.anchor=java.awt.GridBagConstraints.WEST;c.insets=new java.awt.Insets(5,5,5,5);add(merge,c);
     }
 
     String getNandConfigPath() {
