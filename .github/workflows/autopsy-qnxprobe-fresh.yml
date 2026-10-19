@@ -457,14 +457,20 @@ jobs:
           path: dist/autopsy-qnxprobe-windows.zip
           if-no-files-found: error
       - name: Publish QNXProbe Windows release
-        if: github.ref == 'refs/heads/develop'
+        if: github.ref == 'refs/heads/develop' || github.ref == 'refs/heads/feature/artifact-wizard-cleaner'
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
           $tag = "autopsy-qnxprobe-win-${{ github.run_number }}"
+          $featureNotes = ''
+          if ('${{ github.ref }}' -eq 'refs/heads/feature/artifact-wizard-cleaner') {
+            $tag = "autopsy-artifact-wizard-win-${{ github.run_number }}"
+            $featureNotes = "`n`nIncludes Artifact Wizard next to Discovery (CSV, SQLite, Regex, preprocessing, parser export) and offline Blackboard Data Artifact cleanup with backup. Analysis Results are preserved."
+          }
           $zip = 'dist/autopsy-qnxprobe-windows.zip'
           if (-not (Test-Path $zip)) { throw "Missing release ZIP: $zip" }
           $hash = (Get-FileHash $zip -Algorithm SHA256).Hash
           $notes = "Unsigned Windows test build of Autopsy with custom QNXProbe Sleuth Kit 4.15.0 JNI JAR.`n`nCommit: ${{ github.sha }}`nSleuth Kit: $env:CUSTOM_TSK_REVISION (develop-4.1x; QNX6, QNX4, F2FS, OS-9 RBF, EFS, UBI/UBIFS, Datalight/Reliance, FTL100 full-dump autodetection; optional GUI NAND preprocessing with BCH, LBA mapping and bundled Python)`nSHA256: $hash`n`nCase-UCO JAR is preserved."
+          $notes += $featureNotes
           gh release create $tag $zip --repo "${{ github.repository }}" --target "${{ github.sha }}" --title "Autopsy QNXProbe Windows $tag" --notes $notes --prerelease
           if ($LASTEXITCODE -ne 0) { throw 'GitHub release publishing failed' }
