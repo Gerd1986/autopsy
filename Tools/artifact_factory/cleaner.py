@@ -8,6 +8,7 @@ import datetime
 import json
 from pathlib import Path
 import sqlite3
+from contextlib import closing
 import sys
 import uuid
 
@@ -30,7 +31,7 @@ def dispatch(request):
     if apply and (request.get('confirmation') != 'LOESCHEN' or request.get('case_closed') is not True):
         raise ValueError('Close the case and explicitly confirm LOESCHEN before deletion')
     uri = database.as_uri()+('?mode=rw' if apply else '?mode=ro')
-    with sqlite3.connect(uri, uri=True, timeout=10) as c:
+    with closing(sqlite3.connect(uri, uri=True, timeout=10)) as c:
         c.execute('PRAGMA foreign_keys=ON'); c.execute('PRAGMA busy_timeout=10000')
         tables = {r[0] for r in c.execute("SELECT name FROM sqlite_master WHERE type='table'")}
         if not REQUIRED <= tables: raise ValueError('Unsupported case database schema')
@@ -51,7 +52,7 @@ def dispatch(request):
         if c.execute('PRAGMA foreign_key_check').fetchone() is not None:
             raise ValueError('Pre-existing foreign key errors; database was not modified')
         backup = database.with_name(database.name+'.backup-'+datetime.datetime.now().strftime('%Y%m%d-%H%M%S')+'-'+uuid.uuid4().hex[:8])
-        with sqlite3.connect(backup) as dst:
+        with closing(sqlite3.connect(backup)) as dst:
             c.backup(dst)
             if scalar(dst,'PRAGMA quick_check') != 'ok': raise ValueError('Backup integrity check failed')
         c.execute('BEGIN EXCLUSIVE')

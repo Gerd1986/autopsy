@@ -6,6 +6,7 @@ import json
 import os
 from pathlib import Path
 import sqlite3
+from contextlib import closing
 import subprocess
 import sys
 import tempfile
@@ -38,7 +39,7 @@ def main():
         assert run('factory.py',req)['rows'][0]['firstname']=='Müller'
         db=work/'autopsy.db'
         subprocess.run([java,'-cp',runtime_cp,'NativeCaseFixture','create',str(db)],check=True,env=env)
-        with sqlite3.connect(db) as c:
+        with closing(sqlite3.connect(db)) as c:
             analysis=c.execute('SELECT * FROM tsk_analysis_results').fetchall()
             files=c.execute('SELECT * FROM tsk_files').fetchall()
             scores=c.execute('SELECT * FROM tsk_aggregate_score').fetchall()
@@ -46,7 +47,7 @@ def main():
         assert preview['data_artifacts']==1 and preview['analysis_results_preserved']==1
         result=run('cleaner.py',{'action':'apply','database':str(db),'case_closed':True,'confirmation':'LOESCHEN','expected_count':1})
         assert result['deleted']==1 and Path(result['backup']).is_file()
-        with sqlite3.connect(db) as c:
+        with closing(sqlite3.connect(db)) as c:
             assert c.execute('SELECT * FROM tsk_analysis_results').fetchall()==analysis
             assert c.execute('SELECT * FROM tsk_files').fetchall()==files
             assert c.execute('SELECT * FROM tsk_aggregate_score').fetchall()==scores

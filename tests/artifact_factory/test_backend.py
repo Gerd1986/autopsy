@@ -7,6 +7,7 @@ import json
 import os
 from pathlib import Path
 import sqlite3
+from contextlib import closing
 import subprocess
 import sys
 import tempfile
@@ -26,7 +27,7 @@ def fails(fn, text=None):
 
 
 def small_case(path):
-    with sqlite3.connect(path) as c:
+    with closing(sqlite3.connect(path)) as c:
         c.executescript('''PRAGMA foreign_keys=ON;
         CREATE TABLE tsk_objects(obj_id INTEGER PRIMARY KEY, par_obj_id INTEGER REFERENCES tsk_objects(obj_id));
         CREATE TABLE blackboard_artifact_types(artifact_type_id INTEGER PRIMARY KEY,category_type INTEGER,display_name TEXT);
@@ -60,14 +61,14 @@ def test_cleaner(work):
     fails(lambda:cleaner.dispatch({**request,'case_closed':False}),'Close the case')
     fails(lambda:cleaner.dispatch({**request,'expected_count':2}),'count changed')
     assert not list(work.glob('case.db.backup-*'))
-    with sqlite3.connect(path) as c:
+    with closing(sqlite3.connect(path)) as c:
         c.execute("CREATE TRIGGER refuse_artifact_delete BEFORE DELETE ON blackboard_artifacts BEGIN SELECT RAISE(ABORT,'rollback test'); END")
     fails(lambda:cleaner.dispatch(request),'rollback test')
     assert cleaner.dispatch(preview)['data_artifacts']==1
-    with sqlite3.connect(path) as c:c.execute('DROP TRIGGER refuse_artifact_delete')
+    with closing(sqlite3.connect(path)) as c:c.execute('DROP TRIGGER refuse_artifact_delete')
     r=cleaner.dispatch(request);assert r['deleted']==1
-    with sqlite3.connect(r['backup']) as c:assert c.execute('SELECT count(*) FROM blackboard_artifacts').fetchone()[0]==2
-    with sqlite3.connect(path) as c:
+    with closing(sqlite3.connect(r['backup'])) as c:assert c.execute('SELECT count(*) FROM blackboard_artifacts').fetchone()[0]==2
+    with closing(sqlite3.connect(path)) as c:
         assert c.execute('SELECT * FROM blackboard_artifacts').fetchall()==[(200,3,2)]
         assert c.execute('SELECT * FROM blackboard_attributes').fetchall()==[(200,'Preserve')]
         assert c.execute('SELECT * FROM tsk_analysis_results').fetchall()==[(3,)]

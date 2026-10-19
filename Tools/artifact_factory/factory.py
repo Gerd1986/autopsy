@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """JSON bridge for the native Autopsy Artifact Wizard; Python stdlib only."""
 import csv
+from contextlib import closing
 import hashlib
 import itertools
 import json
@@ -41,7 +42,7 @@ def snapshot(path, directory):
         sidecar = Path(str(path)+suffix)
         if sidecar.is_file(): shutil.copyfile(sidecar, Path(str(local)+suffix))
     dest = Path(directory)/'preview.sqlite'
-    with readonly(local) as source, sqlite3.connect(dest) as target:
+    with closing(readonly(local)) as source, closing(sqlite3.connect(dest)) as target:
         source.backup(target)
     return dest
 
@@ -90,7 +91,7 @@ def rows(meta, directory, limit=None, schema=None):
             yield from itertools.islice(reader, limit)
     elif kind == 'sqlite':
         copied = snapshot(path, directory)
-        with readonly(copied) as connection:
+        with closing(readonly(copied)) as connection:
             connection.execute('PRAGMA query_only=ON')
             query = meta.get('query', '').strip()
             if not query:
@@ -147,7 +148,7 @@ def dispatch(request):
     meta, kind, mapping = validate(request)
     with tempfile.TemporaryDirectory(prefix='artifact-wizard-') as td:
         if action == 'tables':
-            with readonly(snapshot(pipeline(meta, td), td)) as connection:
+            with closing(readonly(snapshot(pipeline(meta, td), td))) as connection:
                 return {'tables':[r[0] for r in connection.execute("SELECT name FROM sqlite_master WHERE type IN ('table','view') ORDER BY name")]}
         if action == 'template':
             if not any(mapping.values()): raise ValueError('Map at least one source column')
