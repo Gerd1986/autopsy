@@ -37,14 +37,14 @@ class ImportTest(unittest.TestCase):
     def prepare(self,root):
         out=self.base/'out';out.mkdir()
         result=v.prepare({'input':str(root),'output':str(out)})
-        return result,json.loads((out/'manifest.json').read_text()),out
+        return result,json.loads((out/'manifest.json').read_text(encoding='utf-8')),out
     def test_lava(self):
         root=fixture(self.base/'VLEAPP Export ü #')
         before={p.relative_to(root):p.read_bytes() for p in root.rglob('*') if p.is_file()}
         result,m,out=self.prepare(root)
         self.assertEqual((result['mode'],result['tables'],result['rows']),('lava',1,3))
         t=m['tables'][0];self.assertTrue(t['type_name'].startswith('VLEAPP_GEO_'))
-        values=[json.loads(l) for l in (out/t['rows_file']).read_text().splitlines()]
+        values=[json.loads(l) for l in (out/t['rows_file']).read_text(encoding='utf-8').splitlines()]
         self.assertEqual(values[0],['Müller\tZeile\n0',51.842,{'encoding':'base64','value':'AP8='},None])
         self.assertEqual(t['headers'],['Name','Latitude','Raw','Optional'])
         for rel,data in before.items():
@@ -58,7 +58,7 @@ class ImportTest(unittest.TestCase):
         result,m,out=self.prepare(root);self.assertEqual(result['rows'],2)
         t=m['tables'][0];self.assertEqual(t['headers'],['Name','Name','Note'])
         self.assertTrue(t['type_name'].startswith('VLEAPP_CONTACT_'))
-        self.assertEqual(json.loads((out/t['rows_file']).read_text().splitlines()[0]),['Müller','X','A\tB\nC'])
+        self.assertEqual(json.loads((out/t['rows_file']).read_text(encoding='utf-8').splitlines()[0]),['Müller','X','A\tB\nC'])
     def test_wal_and_snapshot_hashes(self):
         root=fixture(self.base/'report',1)
         con=sqlite3.connect(root/'_lava_artifacts.db')
@@ -77,7 +77,7 @@ class ImportTest(unittest.TestCase):
         self.assertEqual(list((self.base/'out').iterdir()),[])
     def test_missing_table(self):
         root=fixture(self.base/'report');p=root/'_lava_data.lava'
-        d=json.loads(p.read_text());d['artifacts']['Navigation'][0]['tablename']='nope';p.write_text(json.dumps(d))
+        d=json.loads(p.read_text(encoding='utf-8'));d['artifacts']['Navigation'][0]['tablename']='nope';p.write_text(json.dumps(d))
         with self.assertRaisesRegex(ValueError,'table'):self.prepare(root)
     def test_html_only(self):
         root=self.base/'report';root.mkdir();(root/'index.html').write_text('<script>bad()</script>')
@@ -90,7 +90,7 @@ class ImportTest(unittest.TestCase):
         try:(root/'secret.tsv').symlink_to(target)
         except OSError:self.skipTest('symlink unavailable')
         with self.assertRaisesRegex(ValueError,'regular'):self.prepare(root)
-        self.assertEqual(target.read_text(),'outside')
+        self.assertEqual(target.read_text(encoding='utf-8'),'outside')
     def test_output_inside_input(self):
         root=self.base/'report';root.mkdir();out=root/'out';out.mkdir()
         with self.assertRaisesRegex(ValueError,'separate'):v.prepare({'input':str(root),'output':str(out)})

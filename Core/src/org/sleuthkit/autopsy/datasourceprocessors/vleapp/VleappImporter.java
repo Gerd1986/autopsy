@@ -52,7 +52,8 @@ public final class VleappImporter {
             BlackboardArtifact.Type type=bb.getOrAddArtifactType(typeName,"VLEAPP · "+text(t.get("category"))+" · "+text(t.get("name")));
             List<BlackboardAttribute.Type> columns=new ArrayList<>();int col=0;
             for(JsonElement header:t.getAsJsonArray("headers")) {
-                columns.add(attribute(bb,"VLEAPP_C_"+key+"_"+col++,text(header)));
+                columns.add(attribute(bb,"VLEAPP_C_"+key+"_"+col,"VLEAPP field "+(col+1)+": "+text(header)));
+                col++;
             }
             String rowsName=t.get("rows_file").getAsString();
             if(!rowsName.equals(key+".jsonl"))throw new IOException("Invalid row file");

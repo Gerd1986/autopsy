@@ -30,8 +30,8 @@ public final class VleappDataSourceProcessor implements DataSourceProcessor {
             if(chooser.showOpenDialog(panel)==JFileChooser.APPROVE_OPTION)path.setText(chooser.getSelectedFile().getAbsolutePath());});
         JPanel intro=new JPanel(new GridLayout(0,1));
         intro.add(new JLabel("VLEAPP Export (LAVA oder TSV)"));
-        intro.add(new JLabel("Report mit _lava_data.lava + _lava_artifacts.db oder _TSV Exports auswählen."));
-        intro.add(new JLabel("Kopie im Fall; eigene Artefakttypen mit allen Quellspalten. Kein erneuter VLEAPP-Lauf."));
+        intro.add(new JLabel("LAVA-Report oder Ordner _TSV Exports auswählen."));
+        intro.add(new JLabel("Kopie im Fall; eigene Artefakttypen mit allen Quellspalten."));
         panel.add(intro,BorderLayout.NORTH);panel.add(selection);panel.add(error,BorderLayout.SOUTH);
         path.getDocument().addDocumentListener(new DocumentListener(){
             public void insertUpdate(DocumentEvent e){changed();}public void removeUpdate(DocumentEvent e){changed();}public void changedUpdate(DocumentEvent e){changed();}

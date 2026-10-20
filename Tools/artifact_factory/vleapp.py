@@ -24,13 +24,17 @@ def identity(path):
     return s.st_dev, s.st_ino, s.st_size, s.st_mtime_ns
 
 
+def is_link(path):
+    return path.is_symlink() or bool(getattr(path.lstat(), 'st_file_attributes', 0) & getattr(stat, 'FILE_ATTRIBUTE_REPARSE_POINT', 0))
+
+
 def inventory(root):
     result = {}
     for parent, dirs, files in os.walk(root, followlinks=False):
         for name in dirs + files:
             p = Path(parent) / name
             mode = p.lstat().st_mode
-            if not (stat.S_ISDIR(mode) or stat.S_ISREG(mode)) or p.is_symlink():
+            if not (stat.S_ISDIR(mode) or stat.S_ISREG(mode)) or is_link(p):
                 raise ValueError('Only regular files/directories allowed: ' + str(p))
             result[p.relative_to(root).as_posix()] = identity(p)
     return result
@@ -164,7 +168,7 @@ def prepare(request):
         raise ValueError('Select a report folder and an empty output directory')
     if source == output or source in output.parents or output in source.parents:
         raise ValueError('Snapshot and source must be separate directories')
-    if Path(request['input']).is_symlink():
+    if is_link(Path(request['input'])):
         raise ValueError('Report root may not be a symlink')
     before = inventory(source)
     report = output / 'report'
@@ -207,7 +211,7 @@ def prepare(request):
 
 if __name__ == '__main__':
     try:
-        print(json.dumps(prepare(json.load(sys.stdin)), ensure_ascii=False))
+        print(json.dumps(prepare(json.load(sys.stdin)), ensure_ascii=True))
     except Exception as ex:
-        print(json.dumps({'ok': False, 'error': str(ex)}, ensure_ascii=False))
+        print(json.dumps({'ok': False, 'error': str(ex)}, ensure_ascii=True))
         sys.exit(1)

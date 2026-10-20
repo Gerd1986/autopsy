@@ -32,7 +32,8 @@ Each source table/schema gets its own persistent custom **Data Artifact** type,
 shown as `VLEAPP · category · artifact name`. Names are hashed from category,
 name, module, table and column schema so unrelated reports cannot collide just
 because they have the same visible title. Each column gets its own custom string
-attribute, preserving duplicate header names by ordinal. The source row JSON
+attribute with a numbered display label, preserving duplicate header names in
+the Autopsy table as well as in the database. The source row JSON
 array preserves nulls, number representations and base64-marked BLOB values.
 Additional attributes record source row number (1-based import order), parser
 module, category, table and original source path as reported by VLEAPP.
