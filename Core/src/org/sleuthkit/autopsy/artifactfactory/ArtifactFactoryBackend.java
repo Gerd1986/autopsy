@@ -18,7 +18,11 @@ public final class ArtifactFactoryBackend {
     private ArtifactFactoryBackend() { }
 
     public static JsonObject run(String tool, JsonObject request) throws Exception {
-        if (!tool.equals("factory.py") && !tool.equals("cleaner.py") && !tool.equals("geotime.py")) {
+        return run(tool, request, () -> false);
+    }
+
+    public static JsonObject run(String tool, JsonObject request, java.util.function.BooleanSupplier cancelled) throws Exception {
+        if (!tool.equals("factory.py") && !tool.equals("cleaner.py") && !tool.equals("geotime.py") && !tool.equals("vleapp.py")) {
             throw new IOException("Unknown Artifact Wizard tool");
         }
         File script = InstalledFileLocator.getDefault().locate("artifact_factory/" + tool, null, false);
@@ -28,10 +32,14 @@ public final class ArtifactFactoryBackend {
         File runtime = InstalledFileLocator.getDefault().locate("nand/python/python.exe", null, false);
         String python = runtime != null ? runtime.getAbsolutePath()
                 : System.getProperty("os.name").startsWith("Windows") ? "python" : "python3";
-        return run(List.of(python), script.toPath(), request);
+        return run(List.of(python), script.toPath(), request, cancelled);
     }
 
     static JsonObject run(List<String> python, Path script, JsonObject request) throws Exception {
+        return run(python, script, request, () -> false);
+    }
+
+    private static JsonObject run(List<String> python, Path script, JsonObject request, java.util.function.BooleanSupplier cancelled) throws Exception {
         Path response = Files.createTempFile("autopsy-artifact-wizard-", ".json");
         Process process = null;
         try {
@@ -47,6 +55,7 @@ public final class ArtifactFactoryBackend {
             }
             int waits = 0;
             while (!process.waitFor(200, TimeUnit.MILLISECONDS)) {
+                if (cancelled.getAsBoolean()) throw new InterruptedException("Operation cancelled");
                 if (++waits >= 9000) { // bounded long-running preview/pipeline/backup
                     throw new IOException("Artifact Wizard operation timed out");
                 }

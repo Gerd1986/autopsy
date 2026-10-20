@@ -2,7 +2,7 @@ name: Autopsy QNXProbe fresh Windows build
 
 on:
   push:
-    branches: [develop, feature/nand-preprocessor-gui, feature/artifact-wizard-cleaner, feature/dlt-geotime-carving, feature/mergefiles-input]
+    branches: [develop, feature/nand-preprocessor-gui, feature/artifact-wizard-cleaner, feature/dlt-geotime-carving, feature/mergefiles-input, feature/vleapp-import]
     paths:
       - '.github/workflows/autopsy-qnxprobe-fresh.yml'
       - 'Core/src/org/sleuthkit/autopsy/casemodule/**'
@@ -20,6 +20,9 @@ on:
       - 'tests/artifact_factory/**'
       - 'tests/mergefiles/**'
       - 'Tools/mergefiles/**'
+      - 'Core/src/org/sleuthkit/autopsy/datasourceprocessors/vleapp/**'
+      - 'Core/src/org/sleuthkit/autopsy/datamodel/**'
+      - 'tests/vleapp/**'
   workflow_dispatch:
 
 permissions:
@@ -58,6 +61,11 @@ jobs:
         run: |
           python tests/mergefiles/test_mergefiles.py
           if ($LASTEXITCODE -ne 0) { throw 'MergeFiles parity, preview or cancellation test failed' }
+      - name: Test VLEAPP LAVA and TSV export import
+        shell: pwsh
+        run: |
+          python tests/vleapp/test_vleapp.py
+          if ($LASTEXITCODE -ne 0) { throw 'VLEAPP export validation failed' }
       - name: Test Artifact Wizard and transactional cleaner
         shell: pwsh
         run: |
@@ -394,6 +402,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Preprocessing folder/resolution validation failed' }
           python tests/artifact_factory/test_packaged.py $dir
           if ($LASTEXITCODE -ne 0) { throw 'Packaged Artifact Wizard bridge or native-case cleaner failed' }
+          python tests/vleapp/test_packaged.py $dir
+          if ($LASTEXITCODE -ne 0) { throw 'Packaged native VLEAPP importer failed' }
       - name: Smoke-test packaged Sleuth Kit JNI
         shell: pwsh
         run: |
@@ -477,7 +487,7 @@ jobs:
           path: dist/autopsy-qnxprobe-windows.zip
           if-no-files-found: error
       - name: Publish QNXProbe Windows release
-        if: github.ref == 'refs/heads/develop' || github.ref == 'refs/heads/feature/artifact-wizard-cleaner' || github.ref == 'refs/heads/feature/dlt-geotime-carving' || github.ref == 'refs/heads/feature/mergefiles-input'
+        if: github.ref == 'refs/heads/develop' || github.ref == 'refs/heads/feature/artifact-wizard-cleaner' || github.ref == 'refs/heads/feature/dlt-geotime-carving' || github.ref == 'refs/heads/feature/mergefiles-input' || github.ref == 'refs/heads/feature/vleapp-import'
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
@@ -494,6 +504,10 @@ jobs:
           if ('${{ github.ref }}' -eq 'refs/heads/feature/mergefiles-input') {
             $tag = "autopsy-mergefiles-win-${{ github.run_number }}"
             $featureNotes = "`n`nIncludes native MergeFiles in the Add Data Source image input dialog: configurable block interleaving and duplicate ordering, per-block byte reversal, synchronized hex/ASCII preview, cancellation with temporary output, and explicit use of the resulting image. Based on the supplied merge_files.py port of Jens Elstner's mergeFiles 0.3.3. Includes all develop DLT/GeoTime, Artifact Wizard and NAND features."
+          }
+          if ('${{ github.ref }}' -eq 'refs/heads/feature/vleapp-import') {
+            $tag = "autopsy-vleapp-import-win-${{ github.run_number }}"
+            $featureNotes = "`n`nIncludes a separate VLEAPP Export (LAVA / TSV) data source input. Copies completed reports into the case, imports each table into a persistent custom Data Artifact type with category icons, and preserves all source columns, row numbers, original source metadata and SHA-256 manifest. LAVA is preferred over duplicate TSV output. Includes all develop MergeFiles, DLT, GeoTime, Artifact Wizard and NAND features."
           }
           $zip = 'dist/autopsy-qnxprobe-windows.zip'
           if (-not (Test-Path $zip)) { throw "Missing release ZIP: $zip" }

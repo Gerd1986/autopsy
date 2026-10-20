@@ -28,6 +28,23 @@ public final class IconsUtil {
 
     }
 
+    /** Resolve persistent custom type names, never a process-global numeric ID map. */
+    public static String getIconFilePath(String typeName, int typeID) {
+        if (typeName != null && typeName.startsWith("VLEAPP_")) {
+            String image;
+            if (typeName.startsWith("VLEAPP_CONTACT_")) image="contact.png";
+            else if(typeName.startsWith("VLEAPP_CALL_")) image="calllog.png";
+            else if(typeName.startsWith("VLEAPP_MESSAGE_")) image="message.png";
+            else if(typeName.startsWith("VLEAPP_GEO_")) image="gps_trackpoint.png";
+            else if(typeName.startsWith("VLEAPP_BLUETOOTH_")) image="Bluetooth.png";
+            else if(typeName.startsWith("VLEAPP_WIFI_")) image="network-wifi.png";
+            else if(typeName.startsWith("VLEAPP_MEDIA_")) image="camera-icon-16.png";
+            else image="devices.png";
+            return "/org/sleuthkit/autopsy/images/"+image;
+        }
+        return getIconFilePath(typeID);
+    }
+
     @SuppressWarnings("deprecation")
     public static String getIconFilePath(int typeID) {
         String imageFile;

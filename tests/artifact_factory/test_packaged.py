@@ -21,7 +21,7 @@ def main():
     dist=args.distribution.resolve();ext=dist/'autopsy/modules/ext'
     factory=dist/'autopsy/artifact_factory';python=dist/'autopsy/nand/python/python.exe'
     java=dist/'jre/bin/java.exe';java=str(java if java.is_file() else 'java')
-    for name in ('factory.py','template_core.py','cleaner.py','dlt.py','geotime.py','geotime_core.py','preprocess.py'):
+    for name in ('factory.py','template_core.py','cleaner.py','dlt.py','geotime.py','geotime_core.py','preprocess.py','vleapp.py'):
         assert (factory/name).read_bytes()==(ROOT/'Tools/artifact_factory'/name).read_bytes()
     modules=[ext,dist/'autopsy/modules',dist/'platform/lib',dist/'platform/modules',dist/'platform/core']
     cp=os.pathsep.join(str(p/'*') for p in modules)
@@ -49,6 +49,9 @@ def main():
         assert carved['count']==1 and len(carved['exports'])==3
         core=dist/'autopsy/modules/org-sleuthkit-autopsy-core.jar'
         with zipfile.ZipFile(core) as jar:
+            assert 'org/sleuthkit/autopsy/datasourceprocessors/vleapp/VleappImporter.class' in jar.namelist()
+            dsp=jar.read('META-INF/services/org.sleuthkit.autopsy.corecomponentinterfaces.DataSourceProcessor').decode('utf8')
+            assert 'org.sleuthkit.autopsy.datasourceprocessors.vleapp.VleappDataSourceProcessor' in dsp
             assert 'org/sleuthkit/autopsy/casemodule/MergeFilesDialog.class' in jar.namelist()
             assert 'org/sleuthkit/autopsy/casemodule/MergeFiles.class' in jar.namelist()
             assert 'org/sleuthkit/autopsy/contentviewers/DltContentViewer.class' in jar.namelist()
