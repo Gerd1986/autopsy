@@ -9,7 +9,10 @@ import org.sleuthkit.datamodel.*;
 /** Real production FileManager registration, source resolution and artifact creation. */
 public final class VleappFileManagerTest {
     public static void main(String[] args)throws Exception {
-        Path work=Path.of(args[0]);SleuthkitCase sk=SleuthkitCase.newCase(work.resolve("file-manager.db").toString());
+        Path work=Path.of(args[0]);
+        Path user=work.resolve("test-user");Files.createDirectories(user.resolve("var/log"));
+        System.setProperty("netbeans.user",user.toString());
+        SleuthkitCase sk=SleuthkitCase.newCase(work.resolve("file-manager.db").toString());
         try {
             List<AbstractFile> callbacks=new ArrayList<>();
             LocalFilesDataSource ds=new FileManager(sk).addLocalFilesDataSource(UUID.randomUUID().toString(),
