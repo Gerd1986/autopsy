@@ -316,7 +316,12 @@ jobs:
             if ((Get-FileHash "Tools/nand/$file" -Algorithm SHA256).Hash -ne (Get-FileHash "$env:TSK_HOME/tools/flash/$file" -Algorithm SHA256).Hash) { throw "Bundled NAND source mismatch: $file" }
           }
           foreach ($file in @('qualcomm-kommbox-4352.json','synthetic-lba-bch-fat32.json')) {
-            if ((Get-FileHash "Tools/nand/profiles/$file" -Algorithm SHA256).Hash -ne (Get-FileHash "$env:TSK_HOME/config/flash_devices/$file" -Algorithm SHA256).Hash) { throw "Bundled NAND profile mismatch: $file" }
+            # Autopsy uses the Windows checkout default; TSK uses core.autocrlf=false.
+            # Ignore CRLF versus LF only; preserve all other profile content checks.
+            $bundled = [System.IO.File]::ReadAllText((Join-Path $PWD "Tools/nand/profiles/$file")).Replace("`r`n", "`n")
+            $pinned = [System.IO.File]::ReadAllText("$env:TSK_HOME/config/flash_devices/$file").Replace("`r`n", "`n")
+            if (-not [string]::Equals($bundled, $pinned, [System.StringComparison]::Ordinal)) { throw "Bundled NAND profile mismatch: $file" }
+            Write-Host "Verified NAND profile (LF-normalized): $file"
           }
       - name: Test NAND preprocessing bridge
         shell: pwsh
