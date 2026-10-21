@@ -18,6 +18,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from preprocess import resolve_preprocess, preprocessing_environment
 from dlt import iter_dlt, DLT_COLUMNS
 from template_core import EMBEDDED_PARSER_BLOCK, build_autopsy_template
+from schema import validate_schema
 
 FIELDS = {
  'Geo-Track': ['Timestamp','Longitude','Latitude','Geschwindigkeit'],
@@ -121,12 +122,13 @@ def rows(meta, directory, limit=None, schema=None):
         raise ValueError('Select CSV, SQLite, Regex or DLT')
 
 
-def normalize(input_rows, mapping, kind):
+def normalize(input_rows, mapping, kind, meta=None):
     ns = {'unicode': str, 'unichr': chr, 'long': int}
     exec(EMBEDDED_PARSER_BLOCK, ns)
     ns['_run_preprocess_if_needed'] = lambda m:m
     ns['_iter_rows_from_csv_file'] = lambda *unused: iter(input_rows)
-    return ns['parse_rows']({'source_type':'csv','path':'unused'}, mapping, kind)
+    config = dict(meta or {});config.update(source_type='csv',path='unused')
+    return ns['parse_rows'](config, mapping, kind)
 
 
 def validate(request):
@@ -136,17 +138,28 @@ def validate(request):
         raise ValueError('Select a readable input file')
     meta['path'] = str(source.resolve())
     kind = request.get('plugin_type', 'Geo-Track')
-    if kind not in FIELDS:
+    if kind not in FIELDS and kind != 'Generic':
         raise ValueError('Unknown artifact type')
     mapping = request.get('mapping', {})
-    if not isinstance(mapping, dict) or set(mapping)-set(FIELDS[kind]):
+    fields = [f['name'] for f in validate_schema(meta.get('artifact_schema'))['attributes']] if kind == 'Generic' else FIELDS[kind]
+    if not isinstance(mapping, dict) or set(mapping)-set(fields):
         raise ValueError('Invalid mapping fields')
+    if meta.get('timestamp_unit','auto') not in ('auto','seconds','milliseconds','microseconds','nanoseconds'):
+        raise ValueError('Invalid timestamp unit')
+    if meta.get('timestamp_precision','source') not in ('source','2','3','6','9'):
+        raise ValueError('Invalid timestamp precision')
     return meta, kind, mapping
 
 
 def dispatch(request):
     action = request.get('action')
     meta, kind, mapping = validate(request)
+    if action in ('template','test','export_csv'):
+        required = ('Latitude','Longitude') if kind in ('Geo-Track','Last-Position','Geo-Bookmark') else ()
+        if kind == 'Generic' and meta['artifact_schema']['type_name'] in ('TSK_GPS_TRACKPOINT','TSK_GPS_LAST_KNOWN_LOCATION','TSK_GPS_BOOKMARK','TSK_GPS_SEARCH'):
+            required = ('TSK_GEO_LATITUDE','TSK_GEO_LONGITUDE')
+        if any(not mapping.get(field) for field in required):
+            raise ValueError('Map both latitude and longitude for this GPS artifact')
     with tempfile.TemporaryDirectory(prefix='artifact-wizard-') as td:
         if action == 'dlt_page':
             stats = {}
@@ -187,15 +200,26 @@ def dispatch(request):
         if action not in ('test', 'export_csv'):
             raise ValueError('Unknown action')
         if not any(mapping.values()): raise ValueError('Map at least one source column')
-        normalized = normalize(records, mapping, kind)
+        normalized = normalize(records, mapping, kind, meta)
         result = {'count':len(normalized), 'rows':normalized[:50]}
         if action == 'export_csv':
             output = Path(request['output'])
             if output.resolve() == Path(meta['path']).resolve():
                 raise ValueError('Output must differ from evidence input')
+            export_rows=normalized
+            if kind == 'Generic':
+                export_rows=[]
+                for record in normalized:
+                    flat={}
+                    for name,value in record['fields'].items():
+                        if isinstance(value,dict):
+                            for key,item in value.items():flat[name+' · '+key]=item
+                        else:flat[name]=value
+                    flat['original_row']=json.dumps(record['original_row'],ensure_ascii=False)
+                    export_rows.append(flat)
             with output.open('x',encoding='utf-8-sig',newline='') as f:
-                columns = list(normalized[0]) if normalized else []
-                writer = csv.DictWriter(f,fieldnames=columns); writer.writeheader(); writer.writerows(normalized)
+                columns = list(dict.fromkeys(key for row in export_rows for key in row))
+                writer = csv.DictWriter(f,fieldnames=columns); writer.writeheader(); writer.writerows(export_rows)
             result['output'] = str(output)
         return result
 

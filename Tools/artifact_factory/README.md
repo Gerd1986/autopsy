@@ -17,6 +17,30 @@ The offline cleaner is adapted from the user's `data_artifact_cleaner_v3.py`.
   named groups. Optional multiline/DOTALL matching supports records spanning lines.
 - Preview up to 50 rows and map individual source columns to artifact fields.
 - Geo-Track, Last-Position, Geo-Bookmark, Event, Mobile/contact, Bluetooth and Call.
+- The type selector also lists every standard/custom **Data Artifact** registered
+  in the open case, including imported LAVA types. Existing fields are discovered
+  from persisted attributes. Additional fields can be selected from the case's
+  attribute catalog or created with a name and type (STRING, DATETIME, DOUBLE,
+  INTEGER, LONG, BYTE as hex, JSON). Numeric case IDs are never embedded in plugins.
+- New-type presets cover all integrated VLEAPP icon families: vehicle, power,
+  battery, diagnostics, settings, activity, temperature, navigation, contacts,
+  messages, calls, Bluetooth/WLAN, USB, media, accounts and the other categories.
+  Enter a free artifact name, add/remove fields, and map source columns. Presets
+  and existing case types show their matching icons in the selector. Analysis
+  Results are not exposed through this Data Artifact writer.
+- Timestamp input supports Unix seconds/milliseconds/microseconds/nanoseconds,
+  automatic units, ISO offsets, decimal point/comma fractions and custom strptime
+  formats (`%f` for fractional seconds). Unzoned text is interpreted as UTC.
+  Select minimum display precision `2` for hundredths or `3` for milliseconds;
+  source precision is preserved even when higher. Decimal arithmetic avoids a
+  float roundtrip. Preview, CSV and exported Jython use the same parsing code.
+- Autopsy's standard DATETIME/map/timeline API stores whole Unix seconds. The
+  generated module additionally stores the full UTC value, exact decimal epoch
+  and raw input as visible attributes; no fractional part is silently discarded.
+  Every mapped DATETIME field gets its own precision attributes. Original rows
+  are preserved as JSON. New custom types with standard latitude/longitude fields
+  get linked GPS artifacts for the normal Geolocation viewer; saved favorites
+  and position samples use their respective map types.
 - Input filename/pattern and module display name independent of the preview file.
 - Reorderable preprocessing steps with command, output suffix and explicit shell
   mode. `{input}`, `{output}` and `{script_dir}` are supported; stdout is captured
@@ -33,6 +57,9 @@ The offline cleaner is adapted from the user's `data_artifact_cleaner_v3.py`.
   path. Exported templates do not embed the local evidence/preview path.
 - Changing the source settings or pipeline requires a refreshed preview before
   a test/export. Empty tables retain their column names for mapping.
+  Artifact/precision changes can reuse the source preview. Re-export existing
+  ingest scripts to use the new schema and subsecond implementation; previously
+  exported self-contained plugins retain their original code.
 
 ## Blackboard cleanup
 

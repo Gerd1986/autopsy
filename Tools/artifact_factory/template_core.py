@@ -43,42 +43,6 @@ def _bb_text(value):
             text = unicode(repr(value), "utf-8", "replace")
     return text.replace(unichr(0x200E), u"")
 
-def _timestamp_to_epoch_and_str(val):
-    if val is None:
-        return (None, None)
-    s = str(val).strip()
-    if not s:
-        return (None, None)
-    if re.match(r"^[+-]?\d+(?:\.\d+)?$", s):
-        try:
-            num = float(s) if "." in s else int(s)
-            if num > 1000000000000:
-                num //= 1000
-            dt = datetime.datetime.utcfromtimestamp(num)
-            return (int(num), dt.strftime("%Y-%m-%d %H:%M:%S"))
-        except Exception:
-            return (None, s)
-    fmts = [
-        "%Y-%m-%d %H:%M:%S",
-        "%Y/%m/%d %H:%M:%S",
-        "%Y/%m/%d, %H:%M:%S",
-        "%Y/%m/%d, %H:%M:%S.%f",
-        "%Y-%m-%dT%H:%M:%S",
-        "%Y-%m-%dT%H:%M:%S.%fZ",
-        "%Y-%m-%dT%H:%M:%SZ",
-        "%Y-%m-%d",
-        "%d.%m.%Y %H:%M:%S",
-        "%d.%m.%Y",
-    ]
-    for fmt in fmts:
-        try:
-            dt = datetime.datetime.strptime(s, fmt)
-            epoch = int((dt - datetime.datetime(1970, 1, 1)).total_seconds())
-            return (epoch, dt.strftime("%Y-%m-%d %H:%M:%S"))
-        except Exception:
-            continue
-    return (None, s)
-
 def _normalize_float(val, mn=None, mx=None):
     if val is None:
         return None
@@ -249,7 +213,15 @@ def parse_rows(meta, mapping, plugin_type):
     out = []
     for row in src_iter:
         rec = {}
-        if plugin_type == "Geo-Track":
+        if plugin_type == "Generic":
+            schema = meta['artifact_schema']
+            validate_schema(schema)
+            rec['fields'] = {}
+            for field in schema['attributes']:
+                source = mapping.get(field['name'])
+                if source:
+                    rec['fields'][field['name']] = typed_cell(row.get(source), field, meta)
+        elif plugin_type == "Geo-Track":
             epoch, ts_str = _timestamp_to_epoch_and_str(row.get(mapping.get("Timestamp")))
             rec["timestamp_epoch"] = epoch
             rec["timestamp_str"] = ts_str
@@ -290,12 +262,19 @@ def parse_rows(meta, mapping, plugin_type):
             rec["timestamp_epoch"] = epoch
             rec["timestamp_str"] = ts_str
             rec["duration_seconds"] = _normalize_duration(row.get(mapping.get("Dauer")))
+        if mapping.get('Timestamp'):
+            rec.update(timestamp_details(row.get(mapping['Timestamp']), meta.get('timestamp_unit', 'auto'),
+                                        meta.get('timestamp_format', ''), meta.get('timestamp_precision', 'source')))
+        rec['original_row'] = row
         out.append(rec)
     return out
 '''
 
 from pathlib import Path as _TemplatePath
 EMBEDDED_PARSER_BLOCK = (_TemplatePath(__file__).parent / "preprocess.py").read_text(encoding="utf-8") + "\n" + EMBEDDED_PARSER_BLOCK
+EMBEDDED_PARSER_BLOCK += "\n" + (_TemplatePath(__file__).parent / "precision.py").read_text(encoding="utf-8")
+EMBEDDED_PARSER_BLOCK += "\n" + (_TemplatePath(__file__).parent / "schema.py").read_text(encoding="utf-8")
+EMBEDDED_PARSER_BLOCK += "\n" + (_TemplatePath(__file__).parent / "writer.py").read_text(encoding="utf-8")
 
 SQLITE_JDBC_BLOCK = r'''
 from java.sql import DriverManager
@@ -327,6 +306,10 @@ def parse_rows_sqlite_jdbc(db_path, sql_query):
 '''
 
 def build_artifact_block(plugin_type):
+    if plugin_type == 'Generic':
+        return '''
+                    art = _write_schema_artifact(file, sk, meta, row, moduleName)
+'''
     if plugin_type == "Geo-Track":
         return r'''
                     timestamp_epoch = row.get("timestamp_epoch")
@@ -502,6 +485,8 @@ def _stage_case_folder(folder, destination, seen=None):
             parts.append((Path(__file__).parent / "dlt.py").read_text(encoding="utf-8"))
 
     artifact_block = build_artifact_block(plugin_type)
+    if plugin_type != 'Generic':
+        artifact_block = artifact_block.replace('blackboard.indexArtifact(art)', '_post_wizard_artifact(art, sk, meta, row, moduleName)')
 
     core = f'''
 class UniversalPluginFactory(IngestModuleFactoryAdapter):
@@ -523,6 +508,7 @@ class UniversalPluginModule(DataSourceIngestModule):
 
     def process(self, dataSource, progressBar):
         case = Case.getCurrentCase()
+        sk = case.getSleuthkitCase()
         fm = case.getServices().getFileManager()
         blackboard = case.getServices().getBlackboard()
 

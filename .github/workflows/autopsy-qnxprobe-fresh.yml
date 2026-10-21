@@ -75,6 +75,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'DLT/GeoTime validation failed' }
           python tests/artifact_factory/test_preprocessing.py
           if ($LASTEXITCODE -ne 0) { throw 'Artifact Wizard/cleaner backend tests failed' }
+          python tests/artifact_factory/test_schema_precision.py
+          if ($LASTEXITCODE -ne 0) { throw 'Wizard typed schema and timestamp precision tests failed' }
       - name: Install tools
         shell: pwsh
         run: |
@@ -400,6 +402,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'DLT and GeoTime parser validation failed' }
           python tests/artifact_factory/test_preprocessing.py --jython $jython
           if ($LASTEXITCODE -ne 0) { throw 'Preprocessing folder/resolution validation failed' }
+          python tests/artifact_factory/test_schema_precision.py --jython $jython
+          if ($LASTEXITCODE -ne 0) { throw 'Jython precise timestamp tests failed' }
           python tests/artifact_factory/test_packaged.py $dir
           if ($LASTEXITCODE -ne 0) { throw 'Packaged Artifact Wizard bridge or native-case cleaner failed' }
           python tests/vleapp/test_packaged.py $dir
@@ -507,7 +511,7 @@ jobs:
           }
           if ('${{ github.ref }}' -eq 'refs/heads/feature/vleapp-import') {
             $tag = "autopsy-vleapp-import-win-${{ github.run_number }}"
-            $featureNotes = "`n`nIncludes VLEAPP Export (LAVA / TSV) input with persistent Data Artifact types and source-resolution fix. New: linked GPS records for the normal Geolocation viewer (including source/time filters), specific LAVA artifact icons including vehicle/power/settings/diagnostics, and readable UTC/date fields with preserved original values and fractional seconds. Reimport reports into a new test case to apply these import-time improvements. Preserves report snapshots and SHA-256 manifests; LAVA is preferred over duplicate TSV output. Includes all develop MergeFiles, DLT, GeoTime, Artifact Wizard and NAND features."
+            $featureNotes = "`n`nIncludes VLEAPP import with linked GPS records, category icons and UTC formatting. New Artifact Wizard: all case Data Artifact types including LAVA, 36 icon-based custom type presets, typed field picker/editor, exact centisecond/millisecond/microsecond/nanosecond parsing and preserved original/full-precision timestamps in exported Jython modules. Standard Autopsy time fields remain whole seconds; precise values are stored as visible extra attributes. Re-export older generated modules to use these improvements. Includes all develop MergeFiles, DLT, GeoTime, cleaner and NAND features."
           }
           $zip = 'dist/autopsy-qnxprobe-windows.zip'
           if (-not (Test-Path $zip)) { throw "Missing release ZIP: $zip" }

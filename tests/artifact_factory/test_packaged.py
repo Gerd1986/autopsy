@@ -21,7 +21,7 @@ def main():
     dist=args.distribution.resolve();ext=dist/'autopsy/modules/ext'
     factory=dist/'autopsy/artifact_factory';python=dist/'autopsy/nand/python/python.exe'
     java=dist/'jre/bin/java.exe';java=str(java if java.is_file() else 'java')
-    for name in ('factory.py','template_core.py','cleaner.py','dlt.py','geotime.py','geotime_core.py','preprocess.py','vleapp.py'):
+    for name in ('factory.py','template_core.py','cleaner.py','dlt.py','geotime.py','geotime_core.py','preprocess.py','vleapp.py','precision.py','schema.py','writer.py'):
         assert (factory/name).read_bytes()==(ROOT/'Tools/artifact_factory'/name).read_bytes()
     modules=[ext,dist/'autopsy/modules',dist/'platform/lib',dist/'platform/modules',dist/'platform/core']
     cp=os.pathsep.join(str(p/'*') for p in modules)
@@ -31,6 +31,9 @@ def main():
         sources=[ROOT/'tests/artifact_factory'/n for n in ('BackendHarness.java','NativeCaseFixture.java','CleanerLifecycleTest.java','CaseInputStagingTest.java')]
         subprocess.run(['javac','-proc:none','-encoding','UTF-8','-cp',cp,'-d',str(classes),*map(str,sources)],check=True,env=env)
         runtime_cp=cp+os.pathsep+str(classes)
+        from test_schema_precision import check as check_schema
+        schema_work=work/'schema';schema_work.mkdir()
+        check_schema(schema_work,native_cp=runtime_cp)
         subprocess.run([java,'-cp',runtime_cp,'org.sleuthkit.autopsy.artifactfactory.CleanerLifecycleTest'],check=True,env=env)
         def run(tool,request):
             request_path=work/'request.json';request_path.write_text(json.dumps(request),encoding='utf-8')

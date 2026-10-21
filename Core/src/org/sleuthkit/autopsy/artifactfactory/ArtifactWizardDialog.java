@@ -67,6 +67,13 @@ final class ArtifactWizardDialog extends JDialog {
     private final JTable preview = new JTable();
     private final JPanel mappings = new JPanel(new GridBagLayout());
     private final Map<String, JComboBox<String>> mappingBoxes = new LinkedHashMap<>();
+    private final Map<String,JsonObject> artifactCatalog=new LinkedHashMap<>();
+    private final Map<String,JsonObject> attributeCatalog=new LinkedHashMap<>();
+    private JsonObject artifactSchema;
+    private final JTextField artifactName=new JTextField("Mein Artefakt",25);
+    private final JComboBox<String> timestampUnit=new JComboBox<>(new String[]{"auto","seconds","milliseconds","microseconds","nanoseconds"});
+    private final JComboBox<String> timestampPrecision=new JComboBox<>(new String[]{"source","2","3","6","9"});
+    private final JTextField timestampFormat=new JTextField(22);
     private final DefaultTableModel steps = new DefaultTableModel(new Object[]{"Name", "Befehl", "Suffix", "Shell"}, 0) {
         @Override public boolean isCellEditable(int r, int c) { return false; }
     };
@@ -92,13 +99,28 @@ final class ArtifactWizardDialog extends JDialog {
         setSize(1180, 950);
         setLocationRelativeTo(owner);
         rebuildMappings();
+        loadArtifactCatalog();
     }
 
     private JPanel wizard() {
         JPanel panel = new JPanel(new BorderLayout(8, 8));
         JPanel fields = new JPanel(new GridBagLayout());
         table.setEditable(true);
-        row(fields, 0, "Artefakttyp", type);
+        JPanel artifactSettings=new JPanel(new GridBagLayout());
+        row(artifactSettings, 0, "Artefakttyp", type);
+        JPanel artifactOptions=new JPanel(new FlowLayout(FlowLayout.LEFT,4,0));
+        artifactOptions.add(new JLabel("Name für neue Typen:"));artifactOptions.add(artifactName);
+        artifactOptions.add(button("Feld hinzufügen…",this::addField));
+        artifactOptions.add(button("Feld entfernen…",this::removeField));
+        row(artifactSettings, 1, "Eigene / Fall-Artefakte",artifactOptions);
+        JPanel timeOptions=new JPanel(new FlowLayout(FlowLayout.LEFT,4,0));
+        timeOptions.add(new JLabel("Unix-Einheit:"));timeOptions.add(timestampUnit);
+        timeOptions.add(new JLabel("Nachkommastellen (mind.):"));timeOptions.add(timestampPrecision);
+        timeOptions.add(new JLabel("Datumsformat:"));timeOptions.add(timestampFormat);
+        timestampPrecision.setToolTipText("source = Quellpräzision; 2 = Hundertstel; 3 = Millisekunden. Vorhandene Genauigkeit bleibt erhalten.");
+        timestampFormat.setToolTipText("Leer = automatisch; z.B. %d.%m.%Y %H:%M:%S.%f. Zeiten ohne Offset werden als UTC gelesen.");
+        row(artifactSettings, 2, "Zeit (UTC)",timeOptions);
+        row(artifactSettings, 3, "Genauigkeit",new JLabel("<html>Normale Autopsy-Zeitfelder verwenden ganze Sekunden.<br>Die vollständige UTC-Zeit, exakte Unix-Sekunden und Originalwerte werden zusätzlich gespeichert.<br>Felder unten den Quellspalten zuordnen; neue eigene Felder sind frei benennbar.</html>"));
         JPanel path = new JPanel(new BorderLayout(6, 0)); path.add(input);
         JPanel inputButtons = new JPanel(new FlowLayout(FlowLayout.RIGHT, 3, 0));
         inputButtons.add(button("Datei…", this::chooseInput));
@@ -135,9 +157,12 @@ final class ArtifactWizardDialog extends JDialog {
         preprocessing.add(buttonRows,BorderLayout.SOUTH);
         row(fields, 9, "Preprocessing (optional)", preprocessing);
         row(fields, 10, "Platzhalter", new JLabel("<html>{input}, {output}, {script_dir}, {tool_dir}, {input_dir}, {inputs}, {input1} …<br>Einzelne Pfade in Anführungszeichen setzen; Ordner-Input benötigt einen Preprocessing-Schritt.</html>"));
-        JPanel top = new JPanel(new BorderLayout()); top.add(fields);
+        JPanel top = new JPanel(new BorderLayout()); top.add(new JScrollPane(fields));
         top.add(button("Vorschau laden (bis 50 Zeilen)", this::loadPreview), BorderLayout.SOUTH);
-        panel.add(top, BorderLayout.NORTH);
+        JTabbedPane options=new JTabbedPane();options.addTab("Quelle & Preprocessing",top);
+        options.addTab("Artefakttyp & Zeit",new JScrollPane(artifactSettings));
+        options.setPreferredSize(new Dimension(900,440));
+        panel.add(options, BorderLayout.NORTH);
         preview.setAutoResizeMode(JTable.AUTO_RESIZE_OFF);
         preview.setModel(readOnlyModel());
         JTabbedPane previewTabs = new JTabbedPane();
@@ -151,7 +176,7 @@ final class ArtifactWizardDialog extends JDialog {
         actions.add(button("Normalisierte CSV exportieren…", () -> parse(true)));
         actions.add(button("Autopsy-Ingest-Modul exportieren…", this::exportTemplate));
         panel.add(actions, BorderLayout.SOUTH);
-        type.addActionListener(e -> rebuildMappings());
+        type.addActionListener(e -> selectArtifactType());
         return panel;
     }
 
@@ -233,11 +258,25 @@ final class ArtifactWizardDialog extends JDialog {
 
     private JsonObject request(String action, boolean requirePreview) {
         JsonObject m = meta();
-        if (requirePreview && (previewSignature == null || !previewSignature.equals(m.toString()))) {
+        if (requirePreview && (previewSignature == null || !previewSignature.equals(previewKey(m)))) {
             throw new IllegalStateException("Bitte die Vorschau für die aktuellen Quelldaten und Einstellungen neu laden.");
         }
         JsonObject r = new JsonObject(); r.addProperty("action", action); r.add("meta", m);
-        r.addProperty("plugin_type", type.getSelectedItem().toString());
+        m.addProperty("timestamp_unit",timestampUnit.getSelectedItem().toString());
+        m.addProperty("timestamp_precision",timestampPrecision.getSelectedItem().toString());
+        m.addProperty("timestamp_format",timestampFormat.getText().trim());
+        if(artifactSchema!=null) {
+            JsonObject schema=artifactSchema.deepCopy();
+            if(schema.has("icon")) {
+                String name=artifactName.getText().trim();if(name.isBlank())throw new IllegalStateException("Bitte einen Artefaktnamen eingeben.");
+                schema.addProperty("display_name",name);
+                try {
+                    byte[] hash=java.security.MessageDigest.getInstance("SHA-256").digest((name+schema.get("attributes").toString()).getBytes(StandardCharsets.UTF_8));
+                    schema.addProperty("type_name","VLEAPP_"+schema.get("icon").getAsString()+"_"+java.util.HexFormat.of().formatHex(hash).substring(0,24));
+                }catch(java.security.NoSuchAlgorithmException ex){throw new IllegalStateException(ex);}
+            }
+            m.add("artifact_schema",schema);r.addProperty("plugin_type","Generic");
+        } else r.addProperty("plugin_type", type.getSelectedItem().toString());
         r.addProperty("filename", filename.getText().trim()); r.addProperty("module_name", module.getText().trim());
         JsonObject map = new JsonObject();
         mappingBoxes.forEach((field, box) -> map.addProperty(field, box.getSelectedIndex() <= 0 ? "" : box.getSelectedItem().toString()));
@@ -269,26 +308,150 @@ final class ArtifactWizardDialog extends JDialog {
                 model.addRow(cells);
             }
             if ("dlt".equals(source.getSelectedItem())) dltPreview.open(r.getAsJsonObject("meta"));
-            preview.setModel(model); previewSignature = r.get("meta").toString(); rebuildMappings();
+            preview.setModel(model); previewSignature = previewKey(r.getAsJsonObject("meta")); rebuildMappings();
             status.setText(model.getRowCount() + " Zeilen in der Vorschau.");
         });
     }
 
     private void rebuildMappings() {
         Map<String, String> previous = new LinkedHashMap<>();
-        mappingBoxes.forEach((k, v) -> previous.put(k, v.getSelectedItem() == null ? "" : v.getSelectedItem().toString()));
+        mappingBoxes.forEach((k, v) -> { if(v.getItemCount()>1)previous.put(k, v.getSelectedItem() == null ? "" : v.getSelectedItem().toString()); });
         mappings.removeAll(); mappingBoxes.clear();
         String[][] all = {{"Timestamp","Longitude","Latitude","Geschwindigkeit"}, {"Kommentar","Timestamp","Longitude","Latitude"},
             {"Kommentar","Longitude","Latitude"}, {"Timestamp","Eventname","Kommentar"}, {"Nachname","Vorname","Telefonnummer","BluetoothAdresse"},
             {"Geraetename","BluetoothAdresse"}, {"Timestamp","Anrufername","MACAdresse","Angerufener","Nummer","Dauer"}};
-        for (String field : all[Math.max(0, type.getSelectedIndex())]) {
+        java.util.List<String> fieldNames=new java.util.ArrayList<>();
+        if(artifactSchema==null)java.util.Collections.addAll(fieldNames,all[Math.max(0,Math.min(6,type.getSelectedIndex()))]);
+        else for(JsonElement element:artifactSchema.getAsJsonArray("attributes"))fieldNames.add(element.getAsJsonObject().get("name").getAsString());
+        for (String field : fieldNames) {
             JComboBox<String> box = new JComboBox<>(); box.addItem("(keine)");
             for (String column : columns) box.addItem(column);
             String selected = previous.getOrDefault(field, field);
             for (String column : columns) if (column.equalsIgnoreCase(selected)) box.setSelectedItem(column);
-            mappingBoxes.put(field, box); row(mappings, mappingBoxes.size()-1, field, box);
+            String label=field;
+            if(artifactSchema!=null)for(JsonElement item:artifactSchema.getAsJsonArray("attributes")) {
+                JsonObject f=item.getAsJsonObject();if(f.get("name").getAsString().equals(field))label=f.get("label").getAsString()+" · "+f.get("value_type").getAsString()+" ["+field+"]";
+            }
+            if(!previous.containsKey(field)) {
+                String simple=field.replaceFirst("^TSK_(GEO_)?","");
+                for(String column:columns)if(column.equalsIgnoreCase(simple) || (simple.equals("DATETIME") && column.toLowerCase(java.util.Locale.ROOT).matches("timestamp|time.?stamp.?utc|date.?time")))box.setSelectedItem(column);
+                if(artifactSchema!=null)for(JsonElement item:artifactSchema.getAsJsonArray("attributes")) {
+                    JsonObject f=item.getAsJsonObject();if(!f.get("name").getAsString().equals(field))continue;
+                    String hint=f.get("label").getAsString();hint=hint.substring(hint.lastIndexOf(':')+1).trim();
+                    for(String column:columns)if(column.equalsIgnoreCase(hint))box.setSelectedItem(column);
+                }
+            }
+            mappingBoxes.put(field, box); row(mappings, mappingBoxes.size()-1, label, box);
         }
         mappings.revalidate(); mappings.repaint();
+    }
+
+    private String previewKey(JsonObject meta) {
+        JsonObject copy=meta.deepCopy();
+        for(String key:new String[]{"artifact_schema","timestamp_unit","timestamp_precision","timestamp_format"})copy.remove(key);
+        return copy.toString();
+    }
+
+    private org.sleuthkit.datamodel.SleuthkitCase caseDb()throws Exception {
+        return org.sleuthkit.autopsy.casemodule.Case.getCurrentCaseThrows().getSleuthkitCase();
+    }
+
+    private JsonObject standardField(String name) {
+        return attributeCatalog.values().stream().filter(f->f.get("name").getAsString().equals(name)).findFirst().orElseThrow().deepCopy();
+    }
+
+    private void loadArtifactCatalog() {
+        runAsync(()->{
+            JsonObject result=new JsonObject();result.add("types",PRETTY.toJsonTree(ArtifactWizardCatalog.types(caseDb())));
+            result.add("attributes",PRETTY.toJsonTree(ArtifactWizardCatalog.attributes(caseDb())));return result;
+        },result->{
+            result.getAsJsonObject("attributes").entrySet().forEach(e->attributeCatalog.put(e.getKey(),e.getValue().getAsJsonObject()));
+            for(String icon:new String[]{"CONTACT","CALL","MESSAGE","GEO","BOOKMARK","SEARCH","BLUETOOTH","WIFI","MEDIA","PHOTO","VIDEO","AUDIO","PHONE","USB","DEVICE","SOFTWARE","ACCOUNT","NETWORK","DOWNLOAD","LOG","KEY","WARNING","VEHICLE","POWER","BATTERY","SETTINGS","DIAGNOSTIC","ACTIVITY","TEMPERATURE","RADIO","CHIP","TIME","NAVIGATION","DATABASE","WEATHER","RECORD"}) {
+                JsonObject spec=new JsonObject();spec.addProperty("type_name","WIZARD_NEW");spec.addProperty("display_name",icon);spec.addProperty("icon",icon);
+                JsonArray fields=new JsonArray();for(String field:new String[]{"TSK_DATETIME","TSK_NAME","TSK_COMMENT"})fields.add(standardField(field));
+                if(java.util.Set.of("GEO","BOOKMARK","SEARCH","NAVIGATION").contains(icon)) {
+                    fields.add(standardField("TSK_GEO_LATITUDE"));fields.add(standardField("TSK_GEO_LONGITUDE"));
+                }
+                String[] extra;
+                switch(icon) {
+                    case "CONTACT":extra=new String[]{"TSK_NAME_PERSON","TSK_PHONE_NUMBER","TSK_EMAIL"};break;
+                    case "CALL":extra=new String[]{"TSK_PHONE_NUMBER_FROM","TSK_PHONE_NUMBER_TO","TSK_DIRECTION"};break;
+                    case "MESSAGE":extra=new String[]{"TSK_TEXT","TSK_SUBJECT","TSK_PHONE_NUMBER_FROM","TSK_PHONE_NUMBER_TO"};break;
+                    case "BLUETOOTH":case "DEVICE":case "PHONE":case "USB":extra=new String[]{"TSK_DEVICE_NAME","TSK_MAC_ADDRESS","TSK_DEVICE_ID"};break;
+                    case "WIFI":extra=new String[]{"TSK_SSID","TSK_BSSID"};break;
+                    case "ACCOUNT":extra=new String[]{"TSK_USER_NAME","TSK_EMAIL"};break;
+                    case "NETWORK":extra=new String[]{"TSK_URL","TSK_IP_ADDRESS","TSK_DOMAIN"};break;
+                    default:extra=new String[0];
+                }
+                for(String name:extra)attributeCatalog.values().stream().filter(f->f.get("name").getAsString().equals(name)).findFirst().ifPresent(f->fields.add(f.deepCopy()));
+                spec.add("attributes",fields);String label="Neuer Typ · "+categoryLabel(icon);artifactCatalog.put(label,spec);type.addItem(label);
+            }
+            result.getAsJsonObject("types").entrySet().forEach(e->{String label="Fall · "+e.getKey();artifactCatalog.put(label,e.getValue().getAsJsonObject());type.addItem(label);});
+            type.setPrototypeDisplayValue("Fall · Navigation / Fahrzeug-Artefakt [VLEAPP_…]");
+            type.setRenderer(new javax.swing.DefaultListCellRenderer(){
+                @Override public Component getListCellRendererComponent(javax.swing.JList<?> list,Object value,int index,boolean selected,boolean focus) {
+                    JLabel label=(JLabel)super.getListCellRendererComponent(list,value,index,selected,focus);
+                    JsonObject spec=artifactCatalog.get(value);if(spec!=null) {
+                        String path=spec.has("icon_path")?spec.get("icon_path").getAsString():org.sleuthkit.autopsy.datamodel.utils.IconsUtil.getIconFilePath("VLEAPP_"+spec.get("icon").getAsString()+"_0123456789abcdef01234567",-1);
+                        java.net.URL resource=getClass().getResource(path);if(resource!=null)label.setIcon(new javax.swing.ImageIcon(resource));
+                    }
+                    return label;
+                }
+            });
+            status.setText("Artefaktkatalog geladen: bestehende Data Artifacts und frei erweiterbare Typen.");
+        });
+    }
+
+    private void selectArtifactType() {
+        JsonObject selected=artifactCatalog.get(type.getSelectedItem());
+        artifactSchema=selected==null?null:selected.deepCopy();
+        if(artifactSchema!=null && !artifactSchema.has("icon")) {
+            String name=artifactSchema.get("type_name").getAsString();
+            runAsync(()->{JsonObject r=new JsonObject();r.add("fields",ArtifactWizardCatalog.fields(caseDb(),name));return r;},r->{
+                artifactSchema.add("attributes",r.getAsJsonArray("fields"));rebuildMappings();
+            });
+        } else rebuildMappings();
+    }
+
+    private String categoryLabel(String icon) {
+        switch(icon) {
+            case "VEHICLE":return "Fahrzeugdaten";case "POWER":return "Ein-/Ausschalten";case "BATTERY":return "Batterie / Spannung";
+            case "SETTINGS":return "Einstellungen";case "DIAGNOSTIC":return "Diagnose";case "ACTIVITY":return "Fahrsignale / Aktivität";
+            case "TEMPERATURE":return "Temperatur";case "RADIO":return "Radio";case "CHIP":return "Steuergerät / CAN";
+            case "TIME":return "Zeitereignisse";case "NAVIGATION":return "Navigation";case "DATABASE":return "Datenbank";
+            case "WEATHER":return "Wetter";case "CONTACT":return "Kontakte";case "CALL":return "Anrufe";case "MESSAGE":return "Nachrichten";
+            case "GEO":return "Positionen";case "BOOKMARK":return "Favoriten";case "SEARCH":return "Suchen / Ziele";
+            case "BLUETOOTH":return "Bluetooth";case "WIFI":return "WLAN";case "MEDIA":return "Medien";case "PHOTO":return "Fotos";
+            case "VIDEO":return "Videos";case "AUDIO":return "Audio";case "PHONE":return "Telefon";case "USB":return "USB";
+            case "DEVICE":return "Geräte";case "SOFTWARE":return "Software";case "ACCOUNT":return "Konten / Profile";
+            case "NETWORK":return "Netzwerk";case "DOWNLOAD":return "Downloads";case "LOG":return "Protokolle";case "KEY":return "Schlüssel";
+            case "WARNING":return "Warnungen";default:return "Freier Artefakttyp";
+        }
+    }
+
+    private void addField() {
+        if(artifactSchema==null){JOptionPane.showMessageDialog(this,"Bitte zunächst einen neuen Typ oder einen Fall-Artefakttyp wählen.");return;}
+        String[] choices=new String[attributeCatalog.size()+1];choices[0]="Eigenes Feld…";int i=1;for(String label:attributeCatalog.keySet())choices[i++]=label;
+        Object choice=JOptionPane.showInputDialog(this,"Zielfeld wählen","Artefaktfeld hinzufügen",JOptionPane.PLAIN_MESSAGE,null,choices,choices[0]);if(choice==null)return;
+        JsonObject field;
+        if(choice.equals(choices[0])) {
+            JTextField label=new JTextField(25);JComboBox<String> kind=new JComboBox<>(new String[]{"STRING","DATETIME","DOUBLE","INTEGER","LONG","BYTE","JSON"});
+            JPanel editor=new JPanel(new GridBagLayout());row(editor,0,"Feldname",label);row(editor,1,"Datentyp",kind);
+            if(JOptionPane.showConfirmDialog(this,editor,"Eigenes Feld",JOptionPane.OK_CANCEL_OPTION)!=JOptionPane.OK_OPTION)return;
+            String text=label.getText().trim();if(text.isBlank())return;
+            field=new JsonObject();field.addProperty("name","WIZARD_FIELD_"+java.util.UUID.nameUUIDFromBytes((text+kind.getSelectedItem()).getBytes(StandardCharsets.UTF_8)).toString().replace("-",""));
+            field.addProperty("label",text);field.addProperty("value_type",kind.getSelectedItem().toString());
+        } else field=attributeCatalog.get(choice.toString()).deepCopy();
+        JsonArray fields=artifactSchema.getAsJsonArray("attributes");
+        for(JsonElement current:fields)if(current.getAsJsonObject().get("name").equals(field.get("name")))return;
+        fields.add(field);rebuildMappings();
+    }
+
+    private void removeField() {
+        if(artifactSchema==null)return;JsonArray fields=artifactSchema.getAsJsonArray("attributes");if(fields.isEmpty())return;
+        String[] labels=new String[fields.size()];for(int i=0;i<labels.length;i++)labels[i]=fields.get(i).getAsJsonObject().get("label").getAsString()+" ["+fields.get(i).getAsJsonObject().get("name").getAsString()+"]";
+        Object selected=JOptionPane.showInputDialog(this,"Feld entfernen","Artefaktfelder",JOptionPane.PLAIN_MESSAGE,null,labels,labels[0]);if(selected==null)return;
+        for(int i=0;i<labels.length;i++)if(labels[i].equals(selected)){fields.remove(i);break;}rebuildMappings();
     }
 
     private void parse(boolean export) {
