@@ -33,7 +33,7 @@ def main():
         runtime_cp=cp+os.pathsep+str(classes)
         from test_schema_precision import check as check_schema
         schema_work=work/'schema';schema_work.mkdir()
-        check_schema(schema_work,native_cp=runtime_cp)
+        check_schema(schema_work,native_cp=runtime_cp,native_env=env,java=java)
         subprocess.run([java,'-cp',runtime_cp,'org.sleuthkit.autopsy.artifactfactory.CleanerLifecycleTest'],check=True,env=env)
         def run(tool,request):
             request_path=work/'request.json';request_path.write_text(json.dumps(request),encoding='utf-8')

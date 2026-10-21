@@ -17,7 +17,7 @@ from template_core import EMBEDDED_PARSER_BLOCK
 def field(name,kind,label=None):return {'name':name,'value_type':kind,'label':label or name}
 
 
-def check(work,jython=None,native_cp=None):
+def check(work,jython=None,native_cp=None,native_env=None,java='java'):
     source=work/'time.csv'
     source.write_text('time,name,lat,lon,count,blob,payload\n2026-10-21T10:53:16.123+02:00,Müller,51.8,6.8,9223372036854775807,00ff,"{""ok"":true}"\n',encoding='utf-8')
     spec={'type_name':'VLEAPP_GEO_0123456789abcdef01234567','display_name':'Fahrzeugposition','icon':'GEO',
@@ -53,10 +53,10 @@ def check(work,jython=None,native_cp=None):
     compile(template,'generated.py','exec')
     target=work/'generated.py';target.write_text(template,encoding='utf-8')
     if jython:
-        subprocess.run(['java','-cp',str(jython),'org.python.util.jython','-m','py_compile',str(target)],check=True)
+        subprocess.run([java,'-cp',str(jython),'org.python.util.jython','-m','py_compile',str(target)],check=True)
         suffix='\ncases='+repr(cases)+'\nfor raw,unit,display,nanos in cases:\n    parsed=timestamp_details(raw,unit)\n    assert parsed["timestamp_str"]==display,parsed\n    assert parsed["timestamp_nanosecond"]==nanos,parsed\nprint("PASS: exact timestamp arithmetic in actual Jython")\n'
         runner=work/'precision_jython.py';runner.write_text('# coding=utf-8\n'+EMBEDDED_PARSER_BLOCK+suffix,encoding='utf-8')
-        subprocess.run(['java','-cp',str(jython),'org.python.util.jython',str(runner)],check=True)
+        subprocess.run([java,'-cp',str(jython),'org.python.util.jython',str(runner)],check=True)
     if native_cp:
         # Emit precisely the helper code used by generated ingest plugins into a native case.
         suffix='''
@@ -112,8 +112,9 @@ finally:
 print("PASS: native Jython typed attributes, precision, catalog, map and case reopen")
 '''%(json.dumps(req,ensure_ascii=True),str(work/'native.db'))
         runner=work/'native_jython.py';runner.write_text('# coding=utf-8\n'+EMBEDDED_PARSER_BLOCK+suffix,encoding='utf-8')
-        env=os.environ.copy();user=work/'user';(user/'var/log').mkdir(parents=True)
-        subprocess.run(['java','-Dnetbeans.user='+str(user),'-cp',native_cp,'org.python.util.jython',str(runner)],check=True,env=env)
+        # Match the packaged harness's native DLL lookup and bundled Java runtime.
+        env=dict(os.environ if native_env is None else native_env);user=work/'user';(user/'var/log').mkdir(parents=True)
+        subprocess.run([java,'-Dnetbeans.user='+str(user),'-cp',native_cp,'org.python.util.jython',str(runner)],check=True,env=env)
     print('PASS: extensible schemas, exact centi/milli/micro/nanoseconds, typed values and normalized CSV')
 
 
