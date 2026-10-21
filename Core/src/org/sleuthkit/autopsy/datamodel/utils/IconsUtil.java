@@ -39,6 +39,24 @@ public final class IconsUtil {
             else if(typeName.startsWith("VLEAPP_BLUETOOTH_")) image="Bluetooth.png";
             else if(typeName.startsWith("VLEAPP_WIFI_")) image="network-wifi.png";
             else if(typeName.startsWith("VLEAPP_MEDIA_")) image="camera-icon-16.png";
+            else if(typeName.startsWith("VLEAPP_BOOKMARK_")) image="gpsfav.png";
+            else if(typeName.startsWith("VLEAPP_SEARCH_")) image="gps-search.png";
+            else if(typeName.startsWith("VLEAPP_PHOTO_")) image="pictures-icon.png";
+            else if(typeName.startsWith("VLEAPP_VIDEO_")) image="video-file.png";
+            else if(typeName.startsWith("VLEAPP_AUDIO_")) image="audio-file.png";
+            else if(typeName.startsWith("VLEAPP_PHONE_")) image="phone.png";
+            else if(typeName.startsWith("VLEAPP_USB_")) image="usb_devices.png";
+            else if(typeName.startsWith("VLEAPP_DEVICE_")) image="devices.png";
+            else if(typeName.startsWith("VLEAPP_SOFTWARE_")) image="programs.png";
+            else if(typeName.startsWith("VLEAPP_ACCOUNT_")) image="account-icon-16.png";
+            else if(typeName.startsWith("VLEAPP_NETWORK_")) image="domain-16.png";
+            else if(typeName.startsWith("VLEAPP_DOWNLOAD_")) image="downloads.png";
+            else if(typeName.startsWith("VLEAPP_LOG_")) image="text-file.png";
+            else if(typeName.startsWith("VLEAPP_KEY_")) image="key-16.png";
+            else if(typeName.startsWith("VLEAPP_WARNING_")) image="warning16.png";
+            else if(typeName.matches("VLEAPP_(VEHICLE|POWER|BATTERY|SETTINGS|DIAGNOSTIC|ACTIVITY|TEMPERATURE|RADIO|CHIP|TIME|NAVIGATION|DATABASE|WEATHER)_[a-f0-9]{24}")) {
+                image="vleapp-"+typeName.split("_")[1].toLowerCase(java.util.Locale.ROOT)+".png";
+            }
             else image="devices.png";
             return "/org/sleuthkit/autopsy/images/"+image;
         }

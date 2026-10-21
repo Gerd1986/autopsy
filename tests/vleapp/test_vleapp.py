@@ -99,4 +99,40 @@ class ImportTest(unittest.TestCase):
         with (out/m['tables'][0]['rows_file']).open() as f:
             self.assertEqual(sum(1 for _ in f),1201)
 
+    def test_lava_semantic_metadata_keeps_raw_cells(self):
+        from semantic_fixture import make
+        root=self.base/'source';out=self.base/'out'
+        make(root,out,v.prepare)
+        m=json.loads((out/'manifest.json').read_text(encoding='utf-8'))
+        positions,destinations,settings=m['tables']
+        self.assertEqual(positions['geo_pairs'],[{'latitude':1,'longitude':2,'label':''}])
+        self.assertEqual(positions['time_columns'][0],{'index':3,'kind':'datetime','unit':'seconds','naive_utc':True})
+        self.assertEqual(positions['time_columns'][1],{'index':5,'kind':'date'})
+        self.assertTrue(settings['type_name'].startswith('VLEAPP_SETTINGS_'))
+        self.assertTrue(destinations['type_name'].startswith('VLEAPP_SEARCH_'))
+        self.assertEqual(settings['time_columns'],[])
+        self.assertIn('1792572796.125',(out/positions['rows_file']).read_text())
+
+    def test_coordinate_pairing_and_ambiguous_columns(self):
+        s=v.semantics(['Start Latitude','Start Longitude','Latitude End','Longitude End',
+                       'Latitude (as stored)','Longitude (as stored)','Latitude Radians','Longitude Radians'])
+        self.assertEqual(s['geo_pairs'],[{'latitude':0,'longitude':1,'label':'start'},
+                                        {'latitude':2,'longitude':3,'label':'end'}])
+        self.assertEqual(v.semantics(['Latitude','Lat','Longitude'])['geo_pairs'],[])
+
+    def test_legacy_time_units_and_clock_ambiguity(self):
+        s=v.semantics(['Timestamp UTC (ms)','Up Time','UTC Offset','Duration','Local Time (as stored)',
+                       'Timestamp','Date of Birth','Created Date (UTC)'])
+        self.assertEqual([c['index'] for c in s['time_columns']],[0,7,5,6])
+        self.assertEqual(s['time_columns'][0]['unit'],'milliseconds')
+        self.assertFalse(s['time_columns'][2]['naive_utc'])
+
+    def test_specific_icons_precede_manufacturer_category(self):
+        for name,expected in [('Navigation Settings','SETTINGS'),('Power Events','POWER'),
+                              ('Navigation Recent Destinations','GEO'),('Favorite Places','BOOKMARK'),
+                              ('Vehicle Info','VEHICLE'),('Bluetooth Calls','CALL')]:
+            self.assertEqual(v.icon('Ford Vehicles',name),expected)
+        self.assertEqual(v.icon('Navigation','Positions','settings'),'SETTINGS')
+        self.assertEqual(v.icon('Ford Vehicles','Records','../../evil.png'),'RECORD')
+
 if __name__=='__main__':unittest.main()

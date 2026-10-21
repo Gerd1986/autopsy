@@ -9,6 +9,7 @@ import csv
 import hashlib
 import json
 import os
+import re
 from pathlib import Path
 import shutil
 import sqlite3
@@ -50,17 +51,90 @@ def cell(value):
     return value
 
 
-def icon(category, name):
-    text = (category + ' ' + name).casefold()
+def icon(category, name, declared=''):
+    # Honor the writer's semantic icon, never a report-supplied resource path.
+    explicit = {
+        'users': 'CONTACT', 'user': 'ACCOUNT', 'contact': 'CONTACT', 'phone': 'CALL',
+        'phone-call': 'CALL', 'message-square': 'MESSAGE', 'message-circle': 'MESSAGE',
+        'map-pin': 'GEO', 'map': 'GEO', 'navigation': 'NAVIGATION', 'search': 'SEARCH',
+        'star': 'BOOKMARK', 'bluetooth': 'BLUETOOTH', 'wifi': 'WIFI',
+        'camera': 'PHOTO', 'image': 'PHOTO', 'video': 'VIDEO', 'music': 'AUDIO',
+        'headphones': 'AUDIO', 'radio': 'RADIO', 'power': 'POWER', 'battery': 'BATTERY',
+        'settings': 'SETTINGS', 'tool': 'DIAGNOSTIC', 'alert-triangle': 'WARNING',
+        'alert-circle': 'WARNING', 'activity': 'ACTIVITY', 'truck': 'VEHICLE',
+        'car': 'VEHICLE', 'cpu': 'CHIP', 'thermometer': 'TEMPERATURE', 'clock': 'TIME',
+        'calendar': 'TIME', 'globe': 'NETWORK', 'download': 'DOWNLOAD',
+        'smartphone': 'PHONE', 'usb': 'USB', 'key': 'KEY', 'file-text': 'LOG',
+        'database': 'DATABASE', 'package': 'SOFTWARE', 'hard-drive': 'DEVICE',
+        'cloud': 'WEATHER',
+    }
+    if declared in explicit:
+        return explicit[declared]
+    # A broad vehicle/manufacturer category must not mask the specific table name.
+    text = name.casefold()
     for key, words in [('CONTACT', ('contact', 'phonebook', 'address book')),
                        ('CALL', ('call',)), ('MESSAGE', ('message', 'sms', 'chat')),
+                       ('BOOKMARK', ('favorite', 'favourite', 'bookmark', 'saved place')),
+                       ('SEARCH', ('search',)),
+                       ('POWER', ('power', 'shutdown', 'boot', 'ignition')),
+                       ('BATTERY', ('battery', 'voltage', 'charge status')),
+                       ('SETTINGS', ('setting', 'configuration', 'registry')),
+                       ('DIAGNOSTIC', ('diagnostic', 'fault', 'dtc')),
+                       ('TEMPERATURE', ('temperature',)),
+                       ('ACTIVITY', ('odometer', 'speed', 'signal', 'driving')),
                        ('GEO', ('location', 'navigation', 'gps', 'route', 'destination', 'position')),
                        ('BLUETOOTH', ('bluetooth', 'paired')),
                        ('WIFI', ('wifi', 'wi-fi', 'wireless')),
+                       ('USB', ('usb',)), ('AUDIO', ('audio', 'music', 'recording')),
+                       ('RADIO', ('radio', 'sirius', 'sdars')), ('PHOTO', ('photo', 'image')),
+                       ('VIDEO', ('video',)), ('SOFTWARE', ('software', 'package', 'update')),
+                       ('ACCOUNT', ('profile', 'account')), ('VEHICLE', ('vehicle info', 'vin', 'vehicle model')),
+                       ('NETWORK', ('network', 'internet')), ('LOG', ('log', 'event')),
                        ('MEDIA', ('media', 'music', 'photo', 'video'))]:
         if any(w in text for w in words):
             return key
+    if category and category.casefold() != name.casefold():
+        return icon('', category)
     return 'RECORD'
+
+
+def semantics(headers, object_columns=None, columns=None):
+    """Keep original cells intact; describe only explicit dates and degree pairs."""
+    declared = object_columns or {}
+    types = [str(declared.get(c, '')).casefold() for c in (columns or headers)]
+    time_columns = []
+    for i, header in enumerate(headers):
+        h = header.casefold()
+        if types[i] == 'date':
+            time_columns.append({'index': i, 'kind': 'date'})
+        elif types[i] == 'datetime':
+            time_columns.append({'index': i, 'kind': 'datetime', 'unit': 'seconds', 'naive_utc': True})
+        elif (re.search(r'time\s*stamp|date\s*time|\bdate\b|\btime\b', h)
+              and not re.search(r'as stored|raw|offset|duration|uptime|up time|count|elapsed', h)):
+            unit = ('nanoseconds' if re.search(r'nanosecond|\bns\b', h) else
+                    'microseconds' if re.search(r'microsecond|\bus\b', h) else
+                    'milliseconds' if re.search(r'millisecond|\bms\b', h) else 'auto')
+            time_columns.append({'index': i, 'kind': 'datetime', 'unit': unit,
+                                 'naive_utc': 'utc' in h or 'unix' in h or 'epoch' in h})
+    # Prefer the explicit UTC column when both the original clock and UTC are present.
+    time_columns.sort(key=lambda c: (c['kind'] != 'datetime', 'utc' not in headers[c['index']].casefold(),
+                                    types[c['index']] != 'datetime', c['index']))
+    lat, lon = {}, {}
+    for i, header in enumerate(headers):
+        h = header.casefold()
+        if re.search(r'raw|as stored|radian|scaled|integer|e[67]\b', h):
+            continue
+        h = re.sub(r'\b(?:decimal|degrees?|deg|wgs84)\b', '', h)
+        h = re.sub(r'[^a-z0-9]', '', h)
+        for words, target in ((('latitude', 'lat'), lat), (('longitude', 'long', 'lng', 'lon'), lon)):
+            for word in words:
+                if h.startswith(word) or h.endswith(word):
+                    qualifier = h[len(word):] if h.startswith(word) else h[:-len(word)]
+                    target.setdefault(qualifier, []).append(i)
+                    break
+    pairs = [{'latitude': indexes[0], 'longitude': lon[label][0], 'label': label}
+             for label, indexes in lat.items() if len(indexes) == 1 and len(lon.get(label, [])) == 1]
+    return {'column_types': types, 'time_columns': time_columns, 'geo_pairs': pairs}
 
 
 def write_rows(output, key, headers, rows):
@@ -76,12 +150,13 @@ def write_rows(output, key, headers, rows):
     return filename, count
 
 
-def descriptor(category, name, module, table, source, headers):
+def descriptor(category, name, module, table, source, headers, declared_icon='', object_columns=None, columns=None):
     signature = json.dumps([category, name, module, table, headers], ensure_ascii=False)
     key = hashlib.sha256(signature.encode('utf-8')).hexdigest()[:24]
-    return {'key': key, 'type_name': 'VLEAPP_' + icon(category, name) + '_' + key,
+    return {'key': key, 'type_name': 'VLEAPP_' + icon(category, name, declared_icon) + '_' + key,
             'category': category, 'name': name, 'module': module,
-            'table': table, 'source': source, 'headers': headers}
+            'table': table, 'source': source, 'headers': headers,
+            **semantics(headers, object_columns, columns)}
 
 
 def lava_tables(root, output):
@@ -120,7 +195,9 @@ def lava_tables(root, output):
                 mapping = a.get('column_map') or {}
                 headers = [str(mapping.get(c, c)) for c in columns]
                 d = descriptor(str(category), str(a.get('name') or table),
-                               str(a.get('module') or ''), table, '_lava_artifacts.db', headers)
+                               str(a.get('module') or ''), table, '_lava_artifacts.db', headers,
+                               str(a.get('artifact_icon') or ''),
+                               {c['name']: c['type'] for c in a.get('object_columns', [])}, columns)
                 d['original_source'] = a.get('source_path') or ''
                 cursor = con.execute('SELECT ' + ','.join(q(c) for c in columns) + ' FROM ' + q(table))
                 d['rows_file'], d['rows'] = write_rows(output, d['key'], headers, cursor)

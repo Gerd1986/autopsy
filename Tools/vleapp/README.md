@@ -42,15 +42,47 @@ Artifacts link to the imported LAVA database/TSV, not to an invented source file
 in the original vehicle extraction. All report rows are imported without a UI
 preview limit. Rows are streamed and committed in batches of at most 500.
 
-Contacts, calls, messages, locations/navigation, Bluetooth, Wi-Fi and media get
-existing matching Autopsy icons; other records use the device icon. Icon choice
-is based on the report/category title and is presentation only. It does not infer
-or rewrite coordinates, timestamps, call direction or communication accounts.
+LAVA's `artifact_icon` is mapped through a fixed semantic allowlist. Report-supplied
+paths or executable icon content are never loaded. Specific artifact names take
+precedence over broad manufacturer/category titles for legacy exports. Contacts,
+calls, messages, favorites, searches, Bluetooth, Wi-Fi, USB, audio, photos, video,
+software, accounts and networks use matching Autopsy icons. Vehicle, power,
+battery, settings, diagnostics, signals, temperature, radio, chip, clock,
+navigation, database and weather categories have dedicated original 16-pixel
+glyphs. `generate_icons.py` reproduces those PNGs (Pillow, development only).
 Icons are resolved from persisted type names, so they survive case reopen and
 cannot leak numeric custom type IDs between cases. New types appear under the
 normal custom/Data Artifact results and keep every original column inspectable.
-No automatic standard Geolocation/Timeline/Communications records are fabricated
-from ambiguous column labels or time zones.
+
+## Geolocation and readable UTC dates
+
+Explicit latitude/longitude degree columns create linked standard GPS artifacts
+in the same transaction as their custom report row. This makes the records usable
+by the normal Geolocation viewer's source, artifact-type and time filters.
+Favorites use GPS Bookmark; known positions use GPS Trackpoint; destinations and
+other geographic references use GPS Search. These are map presentation categories,
+not evidence that a vehicle visited a saved destination. The full original row,
+module, table, source and row number remain attached, with an associated-artifact
+link to the custom VLEAPP record. Start/end coordinate pairs get separate labels;
+they are not joined into an invented traveled route. Missing, nonfinite and
+out-of-range coordinates are excluded from the map while their report rows stay
+available. Raw/scaled/as-stored/radian columns are never treated as degree pairs.
+
+LAVA `object_columns` with type `datetime` supplies Unix seconds in UTC. The
+matching table field is shown as `21.10.2026 08:53:16.125 UTC`, retaining fractional
+seconds. Type `date` is displayed as `21.10.2026` without adding a timezone.
+Each original temporal value is also exposed as an original-field attribute,
+and the original JSON row and report snapshot remain unchanged. Standard map
+time attributes use Unix seconds, as required by Autopsy. ISO offsets are
+converted to UTC; missing/invalid values remain unchanged. Untyped legacy
+timestamp columns support explicit ms/us/ns units and epoch-sized numeric values.
+Naive untyped local clocks, durations, uptime, counters, offsets and as-stored
+fields are not assigned an invented UTC offset. No communication relationships
+are inferred from imported text.
+
+To apply these import-time changes to an existing report, use the updated build
+and reimport the original export into a new test case. Previously imported
+records are not silently rewritten.
 
 The normal Ingest options remain available after import; the artifact import
 itself is not a rerunnable ingest module. Importing the same report again creates

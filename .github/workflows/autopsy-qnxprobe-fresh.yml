@@ -507,7 +507,7 @@ jobs:
           }
           if ('${{ github.ref }}' -eq 'refs/heads/feature/vleapp-import') {
             $tag = "autopsy-vleapp-import-win-${{ github.run_number }}"
-            $featureNotes = "`n`nIncludes a separate VLEAPP Export (LAVA / TSV) data source input. Copies completed reports into the case, imports each table into a persistent custom Data Artifact type with category icons, and preserves all source columns, row numbers, original source metadata and SHA-256 manifest. LAVA is preferred over duplicate TSV output. Includes all develop MergeFiles, DLT, GeoTime, Artifact Wizard and NAND features."
+            $featureNotes = "`n`nIncludes VLEAPP Export (LAVA / TSV) input with persistent Data Artifact types and source-resolution fix. New: linked GPS records for the normal Geolocation viewer (including source/time filters), specific LAVA artifact icons including vehicle/power/settings/diagnostics, and readable UTC/date fields with preserved original values and fractional seconds. Reimport reports into a new test case to apply these import-time improvements. Preserves report snapshots and SHA-256 manifests; LAVA is preferred over duplicate TSV output. Includes all develop MergeFiles, DLT, GeoTime, Artifact Wizard and NAND features."
           }
           $zip = 'dist/autopsy-qnxprobe-windows.zip'
           if (-not (Test-Path $zip)) { throw "Missing release ZIP: $zip" }

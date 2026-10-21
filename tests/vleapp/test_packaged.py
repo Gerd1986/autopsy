@@ -7,6 +7,7 @@ import subprocess
 import sys
 import tempfile
 from test_vleapp import fixture
+import semantic_fixture
 ROOT=Path(__file__).resolve().parents[2]
 
 def main():
@@ -36,6 +37,14 @@ def main():
         request=json.dumps({'input':str(legacy),'output':str(legacy_out)}).encode()
         assert json.loads(subprocess.check_output([str(python),str(script)],input=request,env=env))['rows']==2
         subprocess.run([java,'-cp',str(classes)+os.pathsep+cp,'VleappFileManagerTest',str(legacy_out)],check=True,env=env)
+        subprocess.run(['javac','-proc:none','-encoding','UTF-8','-cp',cp,'-d',str(classes),str(ROOT/'tests/vleapp/VleappSemanticsTest.java')],check=True,env=env)
+        def prepare(request):
+            result=json.loads(subprocess.check_output([str(python),str(script)],input=json.dumps(request).encode(),env=env))
+            assert result['ok'],result
+        semantic=base/'semantic-out';semantic_fixture.make(base/'semantic-source',semantic,prepare)
+        subprocess.run([java,'-cp',str(classes)+os.pathsep+cp,'VleappSemanticsTest',str(semantic)],check=True,env=env)
+        semantic_legacy=base/'semantic-legacy-out';semantic_fixture.legacy(base/'semantic-legacy-source',semantic_legacy,prepare)
+        subprocess.run([java,'-cp',str(classes)+os.pathsep+cp,'VleappSemanticsTest',str(semantic_legacy)],check=True,env=env)
     print('PASS: packaged VLEAPP native import, cancellation, Unicode, blob/null values, reopened case icons')
 
 if __name__=='__main__':main()
