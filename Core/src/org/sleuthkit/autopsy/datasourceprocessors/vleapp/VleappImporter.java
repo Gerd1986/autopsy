@@ -25,6 +25,44 @@ public final class VleappImporter {
     private static void add(List<BlackboardAttribute> out, BlackboardAttribute.Type type, String value) {
         out.add(new BlackboardAttribute(type, MODULE, value));
     }
+    /** Resolve persisted report files, never FileManager's directory-only progress callbacks. */
+    public static Map<Path, AbstractFile> resolveSources(Content dataSource, Path directory,
+            BooleanSupplier cancelled) throws Exception {
+        Path base=directory.toAbsolutePath().normalize();
+        Path report=base.resolve("report");
+        JsonObject manifest;
+        try(java.io.Reader reader=Files.newBufferedReader(base.resolve("manifest.json"),StandardCharsets.UTF_8)) {
+            manifest=JsonParser.parseReader(reader).getAsJsonObject();
+        }
+        Set<Path> wanted=new HashSet<>();
+        for(JsonElement item:manifest.getAsJsonArray("tables")) {
+            Path target=report.resolve(item.getAsJsonObject().get("source").getAsString()).normalize();
+            if(!target.startsWith(report) || target.equals(report))throw new IOException("Invalid VLEAPP source path");
+            wanted.add(target);
+        }
+        Map<Path,AbstractFile> result=new HashMap<>();
+        Deque<Map.Entry<Content,Path>> pending=new ArrayDeque<>();
+        pending.push(new AbstractMap.SimpleImmutableEntry<>(dataSource,base));
+        while(!pending.isEmpty()) {
+            if(cancelled.getAsBoolean())throw new InterruptedException("VLEAPP source resolution cancelled");
+            Map.Entry<Content,Path> parent=pending.pop();
+            for(Content child:parent.getKey().getChildren()) {
+                Path target=parent.getValue().resolve(child.getName()).normalize();
+                if(!(child instanceof AbstractFile))continue;
+                AbstractFile file=(AbstractFile)child;
+                if(wanted.contains(target) && file.isFile())result.put(target,file);
+                if(file.isDir() && wanted.stream().anyMatch(p->p.startsWith(target))) {
+                    pending.push(new AbstractMap.SimpleImmutableEntry<>(child,target));
+                }
+            }
+        }
+        if(result.size()!=wanted.size()) {
+            Set<Path> missing=new HashSet<>(wanted);missing.removeAll(result.keySet());
+            throw new IOException("VLEAPP report files not found in added data source: "+missing);
+        }
+        return result;
+    }
+
     public static long importRecords(SleuthkitCase sk, long dataSourceId, Path directory,
             Map<Path, AbstractFile> files, BooleanSupplier cancelled, Consumer<String> progress) throws Exception {
         JsonObject manifest;

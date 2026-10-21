@@ -8,6 +8,18 @@ import org.sleuthkit.autopsy.datasourceprocessors.vleapp.VleappImporter;
 import org.sleuthkit.autopsy.datamodel.utils.IconsUtil;
 
 public final class VleappNativeTest {
+    private static void addFiles(SleuthkitCase sk, SpecialDirectory parent, Path local,
+            SleuthkitCase.CaseDbTransaction tx)throws Exception {
+        if(Files.isDirectory(local)) {
+            LocalDirectory directory=sk.addLocalDirectory(parent.getId(),local.getFileName().toString(),tx);
+            try(java.util.stream.Stream<Path> children=Files.list(local)) {
+                for(Path child:(Iterable<Path>)children::iterator)addFiles(sk,directory,child,tx);
+            }
+        } else {
+            sk.addLocalFile(local.getFileName().toString(),local.toAbsolutePath().toString(),Files.size(local),
+                0,0,0,0,true,TskData.EncodingType.NONE,parent,tx);
+        }
+    }
     public static void main(String[] args)throws Exception {
         Path work=Path.of(args[0]);String mode=args[1];Path db=work.resolve("native-"+mode+".db");
         JsonObject manifest=JsonParser.parseString(Files.readString(work.resolve("manifest.json"))).getAsJsonObject();
@@ -16,9 +28,12 @@ public final class VleappNativeTest {
         try {
             SleuthkitCase.CaseDbTransaction tx=sk.beginTransaction();LocalFilesDataSource ds;
             try {ds=sk.addLocalFilesDataSource("vleapp-test-"+mode,"VLEAPP test","UTC",tx);tx.commit();}catch(Exception ex){tx.rollback();throw ex;}
-            VirtualDirectory source=sk.addVirtualDirectory(ds.getId(),"synthetic report source");
-            Map<Path,AbstractFile> files=new HashMap<>();
-            for(JsonElement e:manifest.getAsJsonArray("tables"))files.put(work.resolve("report").resolve(e.getAsJsonObject().get("source").getAsString()).toAbsolutePath().normalize(),source);
+            // Same persisted directory/file layout as FileManager.addLocalFilesDataSource.
+            // No hand-injected source map: the production resolver must discover actual files.
+            tx=sk.beginTransaction();
+            try {addFiles(sk,ds,work.resolve("report"),tx);tx.commit();}catch(Exception ex){tx.rollback();throw ex;}
+            Map<Path,AbstractFile> files=VleappImporter.resolveSources(ds,work,()->false);
+            if(files.isEmpty() || files.values().stream().anyMatch(f->!f.isFile()))throw new AssertionError("Missing real report files");
             AtomicBoolean cancel=new AtomicBoolean(mode.equals("cancel"));
             try {
                 long count=VleappImporter.importRecords(sk,ds.getId(),work,files,cancel::get,s->{if(mode.equals("partial"))cancel.set(true);});

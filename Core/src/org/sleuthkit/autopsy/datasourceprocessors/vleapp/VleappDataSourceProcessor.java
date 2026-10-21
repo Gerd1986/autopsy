@@ -63,11 +63,10 @@ public final class VleappDataSourceProcessor implements DataSourceProcessor {
                 JsonObject request=new JsonObject();request.addProperty("input",selected);request.addProperty("output",work.toString());
                 ArtifactFactoryBackend.run("vleapp.py",request,cancelled::get);
                 if(cancelled.get())throw new InterruptedException("VLEAPP-Import abgebrochen.");
-                Path report=work.resolve("report");Map<Path,AbstractFile> files=new HashMap<>();
+                Path report=work.resolve("report");
                 ds=current.getServices().getFileManager().addLocalFilesDataSource(UUID.randomUUID().toString(),
-                    "VLEAPP Export - "+Path.of(selected).getFileName(),"UTC",host,List.of(report.toString()),f->{
-                        if(f.getLocalAbsPath()!=null)files.put(Path.of(f.getLocalAbsPath()).toAbsolutePath().normalize(),f);
-                    });
+                    "VLEAPP Export - "+Path.of(selected).getFileName(),"UTC",host,List.of(report.toString()),f->{ });
+                Map<Path,AbstractFile> files=VleappImporter.resolveSources(ds,work,cancelled::get);
                 long count=VleappImporter.importRecords(current.getSleuthkitCase(),ds.getId(),work,files,cancelled::get,monitor::setProgressText);
                 Files.writeString(work.resolve("import-status.txt"),"Complete: "+count+" VLEAPP records.\n");
                 monitor.setProgressText("VLEAPP: "+count+" Datensätze importiert.");

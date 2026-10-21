@@ -73,3 +73,19 @@ Wire-format reference inspected: abrignoni/VLEAPP commit
 `958212c5fd5890e34c17b229ef9b0875eb530783`, `scripts/lavafuncs.py`
 (`lava_process_artifact`, `lava_create_sqlite_table`) and
 `scripts/ilapfuncs.py` (`tsv`). No upstream parser code is vendored.
+
+### Source-resolution regression fix
+
+The DSP resolves source files from the committed logical data-source tree. It
+does not build a file index from FileManager progress callbacks, which only
+report directories in this Autopsy version. Packaged integration tests now run
+the actual FileManager for LAVA and nested TSV exports with duplicate basenames,
+verify the Data Artifacts/result-tree query and ensure each artifact links to
+its report file. Only the application ingest event publisher is isolated in the
+standalone test; production FileManager and native case storage are real.
+
+If an import made with the first VLEAPP release contains report files but no
+artifacts, install the corrected build and import the original export into a
+new test case. Existing cases are not silently modified or re-imported. The
+old import-status.txt in the case's VLEAPP module folder records the failed
+source lookup.
