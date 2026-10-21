@@ -87,9 +87,9 @@ jobs:
       - name: Checkout merged Sleuth Kit
         shell: pwsh
         run: |
-          git clone --depth 1 --branch develop-4.1x https://github.com/Gerd1986/sleuthkit.git "$env:TSK_HOME"
+          git clone --no-checkout --config core.autocrlf=false --depth 1 --branch develop-4.1x https://github.com/Gerd1986/sleuthkit.git "$env:TSK_HOME"
           if ($LASTEXITCODE -ne 0) { throw 'Sleuth Kit checkout failed' }
-          $expected = '1aa1543e80985ea1691f3b9204b13d0d60e4581a'
+          $expected = 'b4084675fa00cc2842b3b59d2512c87949293c36'
           git -C "$env:TSK_HOME" fetch --depth 1 origin $expected
           if ($LASTEXITCODE -ne 0) { throw 'Pinned Sleuth Kit fetch failed' }
           git -C "$env:TSK_HOME" checkout --detach $expected
@@ -421,10 +421,14 @@ jobs:
           import os, pathlib, sys
           sys.path.insert(0, str(pathlib.Path(os.environ['TSK_HOME']) / 'tests'))
           from ftl100_fixture import fat12, encode
+          from etfs_fixture import fixture as etfs_fixture
           logical, _ = fat12()
           dest = pathlib.Path(os.environ['RUNNER_TEMP'])
           (dest / 'ftl100-jni-expected.img').write_bytes(logical)
           (dest / 'ftl100-jni-nor.bin').write_bytes(encode(logical, prefix=0xf40000))
+          etfs, files = etfs_fixture(1024)
+          (dest / 'etfs-jni.bin').write_bytes(etfs)
+          (dest / 'etfs-jni-expected.bin').write_bytes(next(data for name, data in files.items() if name.startswith('nested/')))
           '@ | Set-Content -Path "$env:RUNNER_TEMP/ftl100_jni_fixture.py" -Encoding utf8
           python "$env:RUNNER_TEMP/ftl100_jni_fixture.py"
           if ($LASTEXITCODE -ne 0) { throw 'FTL100 JNI fixture generation failed' }
@@ -432,6 +436,7 @@ jobs:
           @'
           import org.sleuthkit.datamodel.SleuthkitJNI;
           import org.sleuthkit.datamodel.SleuthkitCase;
+          import org.sleuthkit.datamodel.TskData;
           public class QnxprobeJniSmoke {
               public static void main(String[] args) throws Exception {
                   String version = SleuthkitJNI.getVersion();
@@ -450,6 +455,26 @@ jobs:
                           throw new IllegalStateException("Packaged JNI FTL100 autodetection/recovery mismatch");
                       }
                       System.out.println("Packaged JNI: late-header FTL100 autodetection and complete logical image verified");
+                      System.out.println("ETFS Java type: " + TskData.TSK_FS_TYPE_ENUM.TSK_FS_TYPE_ETFS);
+                      long etfsImage = SleuthkitJNI.openImage(new String[] {args[2]}, skCase);
+                      long etfs = SleuthkitJNI.openFs(etfsImage, 0, skCase);
+                      long file = SleuthkitJNI.openFile(etfs, 9, TskData.TSK_FS_ATTR_TYPE_ENUM.TSK_FS_ATTR_TYPE_DEFAULT, 0, skCase);
+                      try {
+                          byte[] wanted = java.nio.file.Files.readAllBytes(java.nio.file.Path.of(args[3]));
+                          byte[] got = new byte[wanted.length];
+                          int read = SleuthkitJNI.readFile(file, got, 0, got.length);
+                          if (read != wanted.length || !java.util.Arrays.equals(wanted, got)) {
+                              throw new IllegalStateException("Packaged JNI ETFS transaction replay/content mismatch");
+                          }
+                          byte[] crossPage = new byte[20];
+                          read = SleuthkitJNI.readFile(file, crossPage, 1021, crossPage.length);
+                          if (read != crossPage.length || !java.util.Arrays.equals(crossPage, java.util.Arrays.copyOfRange(wanted, 1021, 1041))) {
+                              throw new IllegalStateException("Packaged JNI ETFS cross-page read mismatch");
+                          }
+                          System.out.println("Packaged JNI: ETFS autodetection, replay, missing-page placeholders and buffered reads verified");
+                      } finally {
+                          SleuthkitJNI.closeFile(file, skCase);
+                      }
                   } finally {
                       skCase.close();
                   }
@@ -466,7 +491,7 @@ jobs:
           $dlls | Where-Object { $_.Name -match '(?i)tsk|ewf|aff|zlib|sqlite|crypto|ssl|vcruntime|msvcp' } | ForEach-Object { Write-Host "Native dependency: $($_.FullName)" }
           $nativeDirs = @($dlls | ForEach-Object DirectoryName | Sort-Object -Unique)
           $env:PATH = ($nativeDirs -join ';') + ';' + $env:PATH
-          & "$($dirs[0].FullName)/jre/bin/java.exe" --class-path $cp $src "$env:RUNNER_TEMP/ftl100-jni-nor.bin" "$env:RUNNER_TEMP/ftl100-jni-expected.img"
+          & "$($dirs[0].FullName)/jre/bin/java.exe" --class-path $cp $src "$env:RUNNER_TEMP/ftl100-jni-nor.bin" "$env:RUNNER_TEMP/ftl100-jni-expected.img" "$env:RUNNER_TEMP/etfs-jni.bin" "$env:RUNNER_TEMP/etfs-jni-expected.bin"
           if ($LASTEXITCODE -ne 0) { throw 'Packaged Sleuth Kit JNI runtime smoke test failed' }
       - name: Smoke-test Autopsy launcher with bundled Java
         shell: pwsh
@@ -496,7 +521,7 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           $tag = "autopsy-qnxprobe-win-${{ github.run_number }}"
-          $featureNotes = ''
+          $featureNotes = "`n`nIncludes merged VLEAPP/LAVA imports with Geolocation links, UTC timestamps and gear/door icons; maximizable Artifact Wizard with typed fields and exact subsecond timestamps, DLT, GeoTime, MergeFiles, artifact cleanup and optional NAND preprocessing. Packaged JNI tests verify FTL100 autodetection and ETFS replay/content reads."
           if ('${{ github.ref }}' -eq 'refs/heads/feature/artifact-wizard-cleaner') {
             $tag = "autopsy-artifact-wizard-win-${{ github.run_number }}"
             $featureNotes = "`n`nIncludes Artifact Wizard next to Discovery (CSV, SQLite, Regex, preprocessing, parser export) and offline Blackboard Data Artifact cleanup with backup. Analysis Results are preserved."
@@ -516,7 +541,7 @@ jobs:
           $zip = 'dist/autopsy-qnxprobe-windows.zip'
           if (-not (Test-Path $zip)) { throw "Missing release ZIP: $zip" }
           $hash = (Get-FileHash $zip -Algorithm SHA256).Hash
-          $notes = "Unsigned Windows test build of Autopsy with custom QNXProbe Sleuth Kit 4.15.0 JNI JAR.`n`nCommit: ${{ github.sha }}`nSleuth Kit: $env:CUSTOM_TSK_REVISION (develop-4.1x; QNX6, QNX4, F2FS, OS-9 RBF, EFS, UBI/UBIFS, Datalight/Reliance, FTL100 full-dump autodetection; optional GUI NAND preprocessing with BCH, LBA mapping and bundled Python)`nSHA256: $hash`n`nCase-UCO JAR is preserved."
+          $notes = "Unsigned Windows test build of Autopsy with custom QNXProbe Sleuth Kit 4.15.0 JNI JAR.`n`nCommit: ${{ github.sha }}`nSleuth Kit: $env:CUSTOM_TSK_REVISION (develop-4.1x; QNX6, QNX4, F2FS, OS-9 RBF, EFS, ETFS, UBI/UBIFS, Datalight/Reliance, FTL100 full-dump autodetection; optional GUI NAND preprocessing with BCH, LBA mapping and bundled Python)`nSHA256: $hash`n`nCase-UCO JAR is preserved."
           $notes += $featureNotes
           gh release create $tag $zip --repo "${{ github.repository }}" --target "${{ github.sha }}" --title "Autopsy QNXProbe Windows $tag" --notes $notes --prerelease
           if ($LASTEXITCODE -ne 0) { throw 'GitHub release publishing failed' }
