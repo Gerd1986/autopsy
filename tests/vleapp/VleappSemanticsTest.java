@@ -73,14 +73,18 @@ public final class VleappSemanticsTest {
                     check(value(point,"VLEAPP_VALUES_JSON").equals(value(original,"VLEAPP_VALUES_JSON")),"Map provenance lost");
                 }
             }
-            for(String category:List.of("VEHICLE","POWER","BATTERY","SETTINGS","DIAGNOSTIC","ACTIVITY","TEMPERATURE","RADIO","CHIP","TIME","NAVIGATION","DATABASE","WEATHER")) {
+            for(String category:List.of("VEHICLE","GEAR","DOOR","POWER","BATTERY","SETTINGS","DIAGNOSTIC","ACTIVITY","TEMPERATURE","RADIO","CHIP","TIME","NAVIGATION","DATABASE","WEATHER")) {
                 String path=IconsUtil.getIconFilePath("VLEAPP_"+category+"_0123456789abcdef01234567",99999);
                 check(VleappSemanticsTest.class.getResource(path)!=null,"Icon resource missing: "+category);
                 javax.swing.ImageIcon image=new javax.swing.ImageIcon(VleappSemanticsTest.class.getResource(path));
                 check(image.getIconWidth()==16 && image.getIconHeight()==16,"Invalid icon: "+category);
             }
+            check(IconsUtil.getIconFilePath("VLEAPP_ACTIVITY_0123456789abcdef01234567",99999,"Gear Status").endsWith("vleapp-gear.png"),"Existing gear type icon lost");
+            check(IconsUtil.getIconFilePath("VLEAPP_RECORD_0123456789abcdef01234567",99999,"Door Status").endsWith("vleapp-door.png"),"Existing door type icon lost");
+            check(!IconsUtil.getIconFilePath("VLEAPP_TEMPERATURE_0123456789abcdef01234567",99999,"Outdoor Temperature").endsWith("vleapp-door.png"),"Door substring false positive");
             check(linked.size()==expected.get("geo").getAsInt(),"Unexpected duplicate map points");
             System.out.println("PASS: real map waypoints, row linkage, reopened semantic icons, UTC display and preserved raw values");
         }finally{sk.close();}
     }
 }
+

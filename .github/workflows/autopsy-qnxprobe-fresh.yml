@@ -511,7 +511,7 @@ jobs:
           }
           if ('${{ github.ref }}' -eq 'refs/heads/feature/vleapp-import') {
             $tag = "autopsy-vleapp-import-win-${{ github.run_number }}"
-            $featureNotes = "`n`nIncludes VLEAPP import with linked GPS records, category icons and UTC formatting. New Artifact Wizard: all case Data Artifact types including LAVA, 36 icon-based custom type presets, typed field picker/editor, exact centisecond/millisecond/microsecond/nanosecond parsing and preserved original/full-precision timestamps in exported Jython modules. Standard Autopsy time fields remain whole seconds; precise values are stored as visible extra attributes. Re-export older generated modules to use these improvements. Includes all develop MergeFiles, DLT, GeoTime, cleaner and NAND features."
+            $featureNotes = "`n`nIncludes VLEAPP import with linked GPS records, category icons and UTC formatting. Maximizable Artifact Wizard with adjustable settings/preview/field panes and more field space; dedicated gear-selector and door-status icons (also for existing imported types). New Artifact Wizard: all case Data Artifact types including LAVA, 38 icon-based custom type presets, typed field picker/editor, exact centisecond/millisecond/microsecond/nanosecond parsing and preserved original/full-precision timestamps in exported Jython modules. Standard Autopsy time fields remain whole seconds; precise values are stored as visible extra attributes. Re-export older generated modules to use these improvements. Includes all develop MergeFiles, DLT, GeoTime, cleaner and NAND features."
           }
           $zip = 'dist/autopsy-qnxprobe-windows.zip'
           if (-not (Test-Path $zip)) { throw "Missing release ZIP: $zip" }
@@ -520,3 +520,4 @@ jobs:
           $notes += $featureNotes
           gh release create $tag $zip --repo "${{ github.repository }}" --target "${{ github.sha }}" --title "Autopsy QNXProbe Windows $tag" --notes $notes --prerelease
           if ($LASTEXITCODE -ne 0) { throw 'GitHub release publishing failed' }
+

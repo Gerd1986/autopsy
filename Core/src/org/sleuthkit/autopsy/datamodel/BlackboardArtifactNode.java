@@ -324,7 +324,7 @@ public class BlackboardArtifactNode extends AbstractContentNode<BlackboardArtifa
         sourceObjTypeName = getSourceObjType(srcContent);
         setName(Long.toString(artifact.getArtifactID()));
         setDisplayNameBySourceContent();
-        String iconPath = IconsUtil.getIconFilePath(artifact.getArtifactTypeName(), artifact.getArtifactTypeID());
+        String iconPath = IconsUtil.getIconFilePath(artifact.getArtifactTypeName(), artifact.getArtifactTypeID(), artifact.getType().getDisplayName());
         setIconBaseWithExtension(iconPath != null && iconPath.charAt(0) == '/' ? iconPath.substring(1) : iconPath);
         Case.addEventTypeSubscriber(CASE_EVENTS_OF_INTEREST, weakListener);
     }
@@ -338,7 +338,7 @@ public class BlackboardArtifactNode extends AbstractContentNode<BlackboardArtifa
      * @param artifact The data artifact or analysis result.
      */
     public BlackboardArtifactNode(BlackboardArtifact artifact) {
-        this(artifact, IconsUtil.getIconFilePath(artifact.getArtifactTypeName(), artifact.getArtifactTypeID()));
+        this(artifact, IconsUtil.getIconFilePath(artifact.getArtifactTypeName(), artifact.getArtifactTypeID(), artifact.getType().getDisplayName()));
     }
 
     /**
@@ -1718,3 +1718,4 @@ public class BlackboardArtifactNode extends AbstractContentNode<BlackboardArtifa
         sheetSet.put(new NodeProperty<>(Bundle.BlackboardArtifactNode_createSheet_comment_name(), Bundle.BlackboardArtifactNode_createSheet_comment_displayName(), NO_DESCR, status));
     }
 }
+

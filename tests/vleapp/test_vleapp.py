@@ -31,6 +31,14 @@ def fixture(root, rows=3):
 
 
 class ImportTest(unittest.TestCase):
+    def test_vehicle_status_icons(self):
+        for name in ('Gear Status', 'Gear Selector', 'Transmission State', 'Wählhebel'):
+            self.assertEqual(v.icon('Ford',name,'activity'),'GEAR')
+        for name in ('Door Status', 'Doors', 'Driver Door', 'Tür'):
+            self.assertEqual(v.icon('Ford',name,'settings'),'DOOR')
+        self.assertNotEqual(v.icon('Ford','Outdoor Temperature'),'DOOR')
+        self.assertNotEqual(v.icon('Ford','Gearbox Software Update'),'DOOR')
+
     def setUp(self):
         self.temp=tempfile.TemporaryDirectory();self.base=Path(self.temp.name)
     def tearDown(self):self.temp.cleanup()
@@ -136,3 +144,4 @@ class ImportTest(unittest.TestCase):
         self.assertEqual(v.icon('Ford Vehicles','Records','../../evil.png'),'RECORD')
 
 if __name__=='__main__':unittest.main()
+

@@ -550,7 +550,7 @@ public class Artifacts {
 
             super.setName(type.getTypeName());
             this.type = type;
-            String iconPath = IconsUtil.getIconFilePath(type.getTypeName(), type.getTypeID());
+            String iconPath = IconsUtil.getIconFilePath(type.getTypeName(), type.getTypeID(), type.getDisplayName());
             setIconBaseWithExtension(iconPath != null && iconPath.charAt(0) == '/' ? iconPath.substring(1) : iconPath);
         }
 
@@ -740,3 +740,4 @@ public class Artifacts {
         }
     }
 }
+

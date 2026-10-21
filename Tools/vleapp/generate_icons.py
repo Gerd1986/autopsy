@@ -8,7 +8,7 @@ ROOT = Path(__file__).resolve().parents[2] / 'Core/src/org/sleuthkit/autopsy/ima
 
 def generate():
     for name in ('vehicle', 'power', 'battery', 'settings', 'diagnostic', 'activity',
-                 'temperature', 'radio', 'chip', 'time', 'navigation', 'database', 'weather'):
+                 'gear', 'door', 'temperature', 'radio', 'chip', 'time', 'navigation', 'database', 'weather'):
         im = Image.new('RGBA', (96, 96))
         d = ImageDraw.Draw(im)
         color = '#355e83'
@@ -22,6 +22,16 @@ def generate():
             rect((3, 10, 21, 19));line([(5, 10), (8, 5), (17, 5), (20, 10)])
             oval((5, 17, 9, 21), color);oval((16, 17, 20, 21), color)
             line([(5, 13), (8, 13)]);line([(16, 13), (19, 13)])
+        elif name == 'gear':
+            # Automatic selector: a knob, lever and slotted gate, not a cogwheel.
+            rect((8, 2, 16, 7));line([(12, 7), (12, 16)], width=2.5)
+            rect((5, 15, 19, 22));line([(8, 19), (16, 19)], '#21805a', 2)
+            line([(20, 4), (22, 4)]);line([(20, 8), (22, 8)]);line([(20, 12), (22, 12)])
+        elif name == 'door':
+            # Side-view vehicle door with window and handle.
+            line([(3, 21), (3, 11), (7, 3), (19, 3), (21, 11), (21, 21), (3, 21)])
+            line([(5, 11), (8, 5), (17, 5), (19, 11), (5, 11)])
+            line([(16, 14), (19, 14)], '#21805a', 2)
         elif name == 'power':
             d.arc((12, 12, 84, 84), 305, 235, fill=color, width=8)
             line([(12, 2), (12, 11)], '#21805a', 2.4)
@@ -63,3 +73,4 @@ def generate():
 
 if __name__ == '__main__':
     generate()
+

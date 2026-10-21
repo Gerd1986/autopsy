@@ -28,7 +28,7 @@ import javax.swing.BorderFactory;
 import javax.swing.JButton;
 import javax.swing.JCheckBox;
 import javax.swing.JComboBox;
-import javax.swing.JDialog;
+import javax.swing.JFrame;
 import javax.swing.JFileChooser;
 import javax.swing.JLabel;
 import javax.swing.JOptionPane;
@@ -43,7 +43,7 @@ import javax.swing.SwingWorker;
 import javax.swing.table.DefaultTableModel;
 
 /** Native front-end for the artifact-factory parser/template functionality. */
-final class ArtifactWizardDialog extends JDialog {
+final class ArtifactWizardDialog extends JFrame {
     private static final long serialVersionUID = 1L;
     private static final Gson PRETTY = new GsonBuilder().setPrettyPrinting().create();
     private final JPanel content = new JPanel(new BorderLayout(8, 8));
@@ -83,7 +83,9 @@ final class ArtifactWizardDialog extends JDialog {
     private boolean busy;
 
     ArtifactWizardDialog(Frame owner) {
-        super(owner, "Artifact Wizard", true);
+        super("Artifact Wizard");
+        setIconImages(owner.getIconImages());
+        setResizable(true);
         setDefaultCloseOperation(DO_NOTHING_ON_CLOSE);
         addWindowListener(new WindowAdapter() {
             @Override public void windowClosing(WindowEvent e) { if (!busy) { dltPreview.reset(); clearCaseInput(); dispose(); } }
@@ -96,7 +98,8 @@ final class ArtifactWizardDialog extends JDialog {
         content.add(status, BorderLayout.SOUTH);
         setContentPane(content);
         setMinimumSize(new Dimension(760, 650));
-        setSize(1180, 950);
+        java.awt.Rectangle screen = java.awt.GraphicsEnvironment.getLocalGraphicsEnvironment().getMaximumWindowBounds();
+        setSize(Math.min(1280, screen.width), Math.min(950, screen.height));
         setLocationRelativeTo(owner);
         rebuildMappings();
         loadArtifactCatalog();
@@ -161,16 +164,25 @@ final class ArtifactWizardDialog extends JDialog {
         top.add(button("Vorschau laden (bis 50 Zeilen)", this::loadPreview), BorderLayout.SOUTH);
         JTabbedPane options=new JTabbedPane();options.addTab("Quelle & Preprocessing",top);
         options.addTab("Artefakttyp & Zeit",new JScrollPane(artifactSettings));
-        options.setPreferredSize(new Dimension(900,440));
-        panel.add(options, BorderLayout.NORTH);
+        options.setMinimumSize(new Dimension(300, 100));
         preview.setAutoResizeMode(JTable.AUTO_RESIZE_OFF);
         preview.setModel(readOnlyModel());
         JTabbedPane previewTabs = new JTabbedPane();
         previewTabs.addTab("Tabelle", new JScrollPane(preview));
         previewTabs.addTab("DLT Viewer", dltPreview);
-        JSplitPane center = new JSplitPane(JSplitPane.VERTICAL_SPLIT, previewTabs, new JScrollPane(mappings));
-        center.setResizeWeight(0.65); center.setDividerLocation(140);
-        panel.add(center);
+        JPanel mappingContent = new JPanel(new BorderLayout());
+        mappingContent.add(mappings, BorderLayout.NORTH);
+        JScrollPane mappingScroll = new JScrollPane(mappingContent);
+        mappingScroll.setBorder(BorderFactory.createTitledBorder("Artefaktfelder / Quellspalten"));
+        mappingScroll.setMinimumSize(new Dimension(300, 150));
+        previewTabs.setMinimumSize(new Dimension(300, 60));
+        JSplitPane center = new JSplitPane(JSplitPane.VERTICAL_SPLIT, previewTabs, mappingScroll);
+        center.setContinuousLayout(true); center.setOneTouchExpandable(true);
+        center.setResizeWeight(0.15); center.setDividerLocation(110);
+        JSplitPane workspace = new JSplitPane(JSplitPane.VERTICAL_SPLIT, options, center);
+        workspace.setContinuousLayout(true); workspace.setOneTouchExpandable(true);
+        workspace.setResizeWeight(0.0); workspace.setDividerLocation(270);
+        panel.add(workspace, BorderLayout.CENTER);
         JPanel actions = new JPanel(new FlowLayout(FlowLayout.LEFT));
         actions.add(button("Parser testen", () -> parse(false)));
         actions.add(button("Normalisierte CSV exportieren…", () -> parse(true)));
@@ -366,7 +378,7 @@ final class ArtifactWizardDialog extends JDialog {
             result.add("attributes",PRETTY.toJsonTree(ArtifactWizardCatalog.attributes(caseDb())));return result;
         },result->{
             result.getAsJsonObject("attributes").entrySet().forEach(e->attributeCatalog.put(e.getKey(),e.getValue().getAsJsonObject()));
-            for(String icon:new String[]{"CONTACT","CALL","MESSAGE","GEO","BOOKMARK","SEARCH","BLUETOOTH","WIFI","MEDIA","PHOTO","VIDEO","AUDIO","PHONE","USB","DEVICE","SOFTWARE","ACCOUNT","NETWORK","DOWNLOAD","LOG","KEY","WARNING","VEHICLE","POWER","BATTERY","SETTINGS","DIAGNOSTIC","ACTIVITY","TEMPERATURE","RADIO","CHIP","TIME","NAVIGATION","DATABASE","WEATHER","RECORD"}) {
+            for(String icon:new String[]{"CONTACT","CALL","MESSAGE","GEO","BOOKMARK","SEARCH","BLUETOOTH","WIFI","MEDIA","PHOTO","VIDEO","AUDIO","PHONE","USB","DEVICE","SOFTWARE","ACCOUNT","NETWORK","DOWNLOAD","LOG","KEY","WARNING","VEHICLE","GEAR","DOOR","POWER","BATTERY","SETTINGS","DIAGNOSTIC","ACTIVITY","TEMPERATURE","RADIO","CHIP","TIME","NAVIGATION","DATABASE","WEATHER","RECORD"}) {
                 JsonObject spec=new JsonObject();spec.addProperty("type_name","WIZARD_NEW");spec.addProperty("display_name",icon);spec.addProperty("icon",icon);
                 JsonArray fields=new JsonArray();for(String field:new String[]{"TSK_DATETIME","TSK_NAME","TSK_COMMENT"})fields.add(standardField(field));
                 if(java.util.Set.of("GEO","BOOKMARK","SEARCH","NAVIGATION").contains(icon)) {
@@ -415,6 +427,7 @@ final class ArtifactWizardDialog extends JDialog {
 
     private String categoryLabel(String icon) {
         switch(icon) {
+            case "GEAR":return "Gang / Wählhebel";case "DOOR":return "Türstatus";
             case "VEHICLE":return "Fahrzeugdaten";case "POWER":return "Ein-/Ausschalten";case "BATTERY":return "Batterie / Spannung";
             case "SETTINGS":return "Einstellungen";case "DIAGNOSTIC":return "Diagnose";case "ACTIVITY":return "Fahrsignale / Aktivität";
             case "TEMPERATURE":return "Temperatur";case "RADIO":return "Radio";case "CHIP":return "Steuergerät / CAN";
@@ -559,3 +572,4 @@ final class ArtifactWizardDialog extends JDialog {
         panel.add(new JLabel(label),c); c.gridx=1; c.weightx=1; c.fill=GridBagConstraints.HORIZONTAL; panel.add(field,c);
     }
 }
+

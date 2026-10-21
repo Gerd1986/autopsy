@@ -52,6 +52,12 @@ def cell(value):
 
 
 def icon(category, name, declared=''):
+    # Specific vehicle states override broad report icons such as activity/settings.
+    text = name.casefold()
+    if re.search(r'\b(?:gear|gearbox|transmission|shifter|selector|wählhebel|gangstatus)\b', text):
+        return 'GEAR'
+    if re.search(r'\b(?:doors?|tür|türen|tuer|tueren)\b', text):
+        return 'DOOR'
     # Honor the writer's semantic icon, never a report-supplied resource path.
     explicit = {
         'users': 'CONTACT', 'user': 'ACCOUNT', 'contact': 'CONTACT', 'phone': 'CALL',
@@ -292,3 +298,4 @@ if __name__ == '__main__':
     except Exception as ex:
         print(json.dumps({'ok': False, 'error': str(ex)}, ensure_ascii=True))
         sys.exit(1)
+

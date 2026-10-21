@@ -17,7 +17,7 @@ public final class ArtifactWizardCatalog {
         for(BlackboardArtifact.Type type:sk.getArtifactTypes()) {
             if(type.getCategory()!=BlackboardArtifact.Category.DATA_ARTIFACT)continue;
             JsonObject spec=new JsonObject();spec.addProperty("type_name",type.getTypeName());spec.addProperty("display_name",type.getDisplayName());
-            spec.addProperty("icon_path",org.sleuthkit.autopsy.datamodel.utils.IconsUtil.getIconFilePath(type.getTypeName(),type.getTypeID()));
+            spec.addProperty("icon_path",org.sleuthkit.autopsy.datamodel.utils.IconsUtil.getIconFilePath(type.getTypeName(),type.getTypeID(),type.getDisplayName()));
             spec.add("attributes",new JsonArray());out.put(type.getDisplayName()+" ["+type.getTypeName()+"]",spec);
         }
         return out;
@@ -39,3 +39,4 @@ public final class ArtifactWizardCatalog {
         return out;
     }
 }
+

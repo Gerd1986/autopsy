@@ -28,6 +28,18 @@ public final class IconsUtil {
 
     }
 
+    /** Also recognize older imported vehicle status types without renaming case records. */
+    public static String getIconFilePath(String typeName, int typeID, String displayName) {
+        if (typeName != null && typeName.startsWith("VLEAPP_") && displayName != null) {
+            String name = displayName.toLowerCase(java.util.Locale.ROOT);
+            if (name.matches("(?s).*\\b(gear|gearbox|transmission|shifter|selector|wählhebel|gangstatus)\\b.*"))
+                return "/org/sleuthkit/autopsy/images/vleapp-gear.png";
+            if (name.matches("(?s).*\\b(doors?|tür|türen|tuer|tueren)\\b.*"))
+                return "/org/sleuthkit/autopsy/images/vleapp-door.png";
+        }
+        return getIconFilePath(typeName, typeID);
+    }
+
     /** Resolve persistent custom type names, never a process-global numeric ID map. */
     public static String getIconFilePath(String typeName, int typeID) {
         if (typeName != null && typeName.startsWith("VLEAPP_")) {
@@ -54,7 +66,7 @@ public final class IconsUtil {
             else if(typeName.startsWith("VLEAPP_LOG_")) image="text-file.png";
             else if(typeName.startsWith("VLEAPP_KEY_")) image="key-16.png";
             else if(typeName.startsWith("VLEAPP_WARNING_")) image="warning16.png";
-            else if(typeName.matches("VLEAPP_(VEHICLE|POWER|BATTERY|SETTINGS|DIAGNOSTIC|ACTIVITY|TEMPERATURE|RADIO|CHIP|TIME|NAVIGATION|DATABASE|WEATHER)_[a-f0-9]{24}")) {
+            else if(typeName.matches("VLEAPP_(VEHICLE|GEAR|DOOR|POWER|BATTERY|SETTINGS|DIAGNOSTIC|ACTIVITY|TEMPERATURE|RADIO|CHIP|TIME|NAVIGATION|DATABASE|WEATHER)_[a-f0-9]{24}")) {
                 image="vleapp-"+typeName.split("_")[1].toLowerCase(java.util.Locale.ROOT)+".png";
             }
             else image="devices.png";
@@ -174,3 +186,4 @@ public final class IconsUtil {
         return "/org/sleuthkit/autopsy/images/" + imageFile;
     }
 }
+
